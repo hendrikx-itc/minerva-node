@@ -1,0 +1,9 @@
+syntax: glob
+*.pyc
+.directory
+build/*
+dist/*
+harvest.egg-info/*
+debian/python-minerva-node-harvest*
+debian/files
+
