@@ -1,0 +1,5 @@
+{
+    "logpath": "/var/log/minerva",
+    "logbasename": "dispatcher",
+    "datasources": []
+}
