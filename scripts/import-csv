@@ -1,0 +1,375 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Command line tool for importing CSV files as trend or attribute data.
+"""
+__docformat__ = "restructuredtext en"
+
+__copyright__ = """
+Copyright (C) 2008-2013 Hendrikx-ITC B.V.
+
+Distributed under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option) any later
+version.  The full license is in the file COPYING, distributed as part of
+this software.
+"""
+from datetime import datetime
+import logging.handlers
+import os
+import sys
+import argparse
+from contextlib import closing
+from StringIO import StringIO
+import json
+from functools import partial
+
+import psycopg2
+from configobj import ConfigObj
+from pkg_resources import resource_string
+
+from minerva.instance import MinervaInstance
+from minerva.util import parse_size
+from minerva.db import parse_db_url
+from minerva.csvimporter import import_csv
+
+DEFAULT_CONFIG = resource_string("minerva.csvimporter",
+                                 "defaults/import-csv.conf")
+DEFAULT_PROFILE = resource_string("minerva.csvimporter", "defaults/profile")
+
+GRANULARITIES = {
+    "qtr": 900,
+    "hr": 3600,
+    "day": 86400,
+    "week": 604800}
+
+
+def main():
+    parser = create_argument_parser()
+
+    args = parser.parse_args()
+
+    if args.verbose and args.quiet:
+        parser.error("options -v and -q are mutually exclusive")
+        return 1
+
+    if args.file_path is None:
+        print("Nothing to do: No csv file specified.")
+        return 0
+
+    if args.timestamp and args.timestamp.lower() == "now":
+        timestamp = datetime.strftime(datetime.now(), args.timestamp_format)
+    else:
+        timestamp = args.timestamp
+
+    minerva_instance = MinervaInstance.load(args.instance)
+
+    config = get_config(args)
+
+    setup_logging(config["log_directory"], config["log_filename"],
+                  config["log_rotation_size"], config["log_level"],
+                  args.verbose, args.quiet)
+
+    logging.root.setLevel(config["log_level"])
+
+    profile = get_profile(args, config)
+
+    _, file_name = os.path.split(args.file_path)
+
+    config_user = config.get("database", {}).get("user")
+    user = config_user or args.user or "minerva_admin"
+
+    db_uri = minerva_instance.get_db_uri(user)
+
+    with closing(connect(db_uri)) as conn:
+        logging.info("start processing file {0}".format(args.file_path))
+        logging.info("using identifier {0}".format(args.identifier))
+
+        with closing(open(args.file_path, "rb")) as csv_file:
+            import_csv(conn, profile, args.datasource, args.storage_type,
+                       timestamp, csv_file, file_name)
+
+        logging.info("finished processing file {0}".format(args.file_path))
+
+    logging.info("Done")
+
+    return 0
+
+
+def create_argument_parser():
+    default_minerva_instance = os.environ.get(
+        "DEFAULT_MINERVA_INSTANCE", "default")
+
+    parser = argparse.ArgumentParser(
+        description="Script for importing csv files")
+
+    parser.add_argument(
+        "-i", "--instance", default=default_minerva_instance,
+        help="name of the target minerva instance")
+
+    parser.add_argument("datasource", help="name of datasource")
+
+    parser.add_argument(
+        "--storage-type", default="trend", help="storage type/format to use")
+
+    parser.add_argument(
+        "file_path", nargs="?", help="Path of file that will be processed")
+
+    parser.add_argument(
+        "--generate-configfile", action=GenerateConfigFileAction, nargs=0,
+        help="generate default config file")
+
+    parser.add_argument(
+        "-c", "--configfile", default="/etc/minerva/import-csv.conf",
+        help="Path to config file")
+
+    parser.add_argument(
+        "--generate-profile-file", action=GenerateProfileFileAction, nargs=0,
+        help="generate default profile file")
+
+    parser.add_argument(
+        "-p", "--profile", default="default", help="Name of profile")
+
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", dest="verbose",
+        default=False, help="Produce verbose output")
+
+    parser.add_argument(
+        "--ignore-field-mismatches", action="store_true", default=False,
+        help="ignore lines with more or less fields than found in header")
+
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", dest="quiet", default=False,
+        help="produce output to log file")
+
+    parser.add_argument(
+        "-g", "--granularity", dest="granularity",
+        help="granularity of csv data", choices=GRANULARITIES.keys())
+
+    parser.add_argument("--timezone", help="timezone of data timestamp")
+
+    parser.add_argument("--identifier", help="the identifier column")
+
+    parser.add_argument(
+        "--timestamp", help="default timestamp [YYYYmmdd_HHMM | NOW]")
+
+    parser.add_argument(
+        "--timestamp-from-filename-regex",
+        help="regular expression for timestamp extraction from filename")
+
+    parser.add_argument(
+        "--timestamp-format", default="%%Y%%m%%d_%%H%%M",
+        help="format of date: default: %%Y%%m%%d_%%H%%M")
+
+    parser.add_argument(
+        "--timestamp-column", help="column containing timestamps")
+
+    parser.add_argument(
+        "--identifier-regex",
+        help="Regex for tweaking identifier in identifier field.")
+
+    parser.add_argument(
+        "--identifier-is-alias", action="store_true",
+        help="Indicated whether identifier is alias.")
+
+    parser.add_argument(
+        "--timestamp-is-start", action="store_true",
+        help="(Timestamp + granularity) will be used as timestamp "
+        "in Minerva database.")
+
+    parser.add_argument(
+        "--fields", dest="fields", nargs="+",
+        help="Fields to import. If not specified all fields are imported.")
+
+    parser.add_argument(
+        "--ignore-fields", dest="ignore_fields", nargs="+",
+        help="Fields to ignore. If not specified no fields are ignored.")
+
+    parser.add_argument(
+        "--character-encoding", dest="character_encoding",
+        help="character encoding of the source file")
+
+    parser.add_argument(
+        "--dialect", help="CSV dialect", choices=["auto", "prime"])
+
+    parser.add_argument(
+        "--value-mapping",
+        help="json formatted string for mapping specific values to other "
+        "values for specific columns (e.g. {\"ccr\":{\"-1\":\"\"}})")
+
+    return parser
+
+
+def setup_logging(directory, filename, rotation_size, level, verbose, quiet):
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL}
+
+    max_log_size = parse_size(rotation_size)
+
+    filepath = os.path.join(directory, filename)
+    handler = logging.handlers.RotatingFileHandler(
+        filepath, maxBytes=max_log_size, backupCount=5)
+    handler.setLevel(level_map[level])
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+
+    rootlogger = logging.getLogger("")
+    rootlogger.setLevel(level_map[level])
+    rootlogger.addHandler(handler)
+
+    if not quiet:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        if verbose:
+            stream_handler.setLevel(logging.DEBUG)
+        else:
+            stream_handler.setLevel(logging.WARNING)
+
+        rootlogger.addHandler(stream_handler)
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(DEFAULT_CONFIG)
+        sys.exit(0)
+
+
+class GenerateProfileFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(DEFAULT_PROFILE)
+        sys.exit(0)
+
+
+def get_config(args):
+    config = ConfigObj(StringIO(DEFAULT_CONFIG))
+
+    if os.path.isfile(args.configfile):
+        custom_config = ConfigObj(args.configfile)
+        config.merge(custom_config)
+    else:
+        print("'{0}' doesn't exist. Using default config.".format(
+            args.configfile))
+
+    return config
+
+
+def connect(db_url, logger=None):
+    scheme, user, password, host, port, database = parse_db_url(db_url)
+
+    assert scheme == "postgresql", "Only PostgreSQL connections are supported"
+
+    if not password is None:
+        create_connection = partial(psycopg2.connect, database=database,
+                                    user=user, password=password, host=host,
+                                    port=port)
+    else:
+        create_connection = partial(psycopg2.connect, database=database,
+                                    user=user, host=host, port=port)
+
+    if logger:
+        conn = create_connection(
+            connection_factory=psycopg2.extras.LoggingConnection)
+
+        conn.initialize(logger)
+    else:
+        conn = create_connection()
+
+    return conn
+
+
+def get_profile(args, config):
+    profile = ConfigObj(StringIO(DEFAULT_PROFILE))
+
+    profile_path = None
+
+    if os.path.isfile(args.profile):
+        profile_path = args.profile
+    elif os.path.isfile(os.path.join(config["profile_directory"],
+                                     args.profile)):
+        profile_path = os.path.join(config["profile_directory"], args.profile)
+
+    if profile_path:
+        profile.merge(ConfigObj(profile_path))
+    else:
+        logging.info(
+            "Profile '{0}' not found. Using default "
+            "profile".format(args.profile))
+
+    granularity = args.granularity or profile["granularity"]
+    profile["granularity"] = int(GRANULARITIES.get(granularity, granularity))
+
+    if args.fields:
+        profile["fields"] = args.fields
+    else:
+        profile["fields"] = profile.as_list("fields")
+
+    if args.ignore_fields:
+        profile["ignore_fields"] = args.ignore_fields
+    else:
+        profile["ignore_fields"] = profile.as_list("ignore_fields")
+
+    if args.timezone:
+        profile["timezone"] = args.timezone
+
+    if args.ignore_field_mismatches:
+        profile["ignore_field_mismatches"] = args.ignore_field_mismatches
+    else:
+        profile["ignore_field_mismatches"] = profile.as_bool(
+            "ignore_field_mismatches")
+
+    if args.identifier:
+        profile["identifier"] = args.identifier
+
+    if args.timestamp_from_filename_regex:
+        profile["timestamp_from_filename_regex"] = \
+            args.timestamp_from_filename_regex
+
+    if args.timestamp_format:
+        profile["timestamp_format"] = args.timestamp_format
+    elif not profile.get("timestamp_format"):
+        profile["timestamp_format"] = "%Y%m%d_%H%M"
+
+    if args.timestamp_column:
+        profile["timestamp_column"] = args.timestamp_column
+
+    if args.identifier_regex:
+        profile["identifier_regex"] = args.identifier_regex
+
+    if args.identifier_is_alias:
+        profile["identifier_is_alias"] = args.identifier_is_alias
+    else:
+        profile["identifier_is_alias"] = profile.as_bool("identifier_is_alias")
+
+    if args.timestamp_is_start:
+        profile["timestamp_is_start"] = args.timestamp_is_start
+    else:
+        profile["timestamp_is_start"] = profile.as_bool("timestamp_is_start")
+
+    if args.character_encoding:
+        profile["character_encoding"] = args.character_encoding
+
+    if args.dialect:
+        profile["dialect"] = args.dialect
+
+    value_mapping = profile["value_mapping"]
+    if args.value_mapping:
+        value_mapping = args.value_mapping
+
+    if value_mapping == "":
+        profile["value_mapping"] = {}
+    else:
+        try:
+            profile["value_mapping"] = json.loads(value_mapping)
+        except ValueError:
+            logging.warning("value_mapping '{0}' not in "
+                            "correct json format".format(value_mapping))
+            sys.exit(1)
+
+    return profile
+
+if __name__ == '__main__':
+    sys.exit(main())

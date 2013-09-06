@@ -1,0 +1,14 @@
+syntax: glob
+*.pyc
+build/*
+*.egg-info/*
+dist/*
+*.swp
+.DS_Store
+debian/files
+debian/changelog
+.directory
+.project
+.pydevproject
+.settings
+
