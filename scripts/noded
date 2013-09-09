@@ -1,0 +1,134 @@
+#!/bin/bash
+source /etc/noded.conf
+
+NAME=minerva-node
+DAEMON=/usr/bin/$NAME
+TAG=noded
+
+PID=$$
+
+function log {
+    logger -t $TAG "$1"
+}
+
+function count_processes {
+    ps -C $1 -o pid= | wc -l
+}
+
+function list_pids {
+    ps -C $1 -o pid=
+}
+
+function start_node {
+    if [ ! -d $NODE_PID_FILE_DIR ]
+    then
+        mkdir -p $NODE_PID_FILE_DIR
+    fi
+
+    if [ ! -d $NODE_OUT_FILE_DIR ]
+    then
+        mkdir -p $NODE_OUT_FILE_DIR
+    fi
+
+    local NODE_PID_FILE=$NODE_PID_FILE_DIR/$NODE_FILE_PREFIX$1.pid
+    local NODE_OUT_FILE=$NODE_OUT_FILE_DIR/$NODE_FILE_PREFIX$1.out
+
+    local cmd="start-stop-daemon --start --background --pidfile=$NODE_PID_FILE \
+        --chuid $NODE_USER --make-pidfile --exec /bin/bash -- -c '$DAEMON --slot=$1 > $NODE_OUT_FILE 2>&1'"
+
+    log "Starting node $cmd"
+    local result=`bash -c "$cmd"`
+}
+
+function get_process_name {
+    ps -p $1 -o comm=
+}
+
+function is_slot_free {
+    local NODE_PID_FILE=$NODE_PID_FILE_DIR/$NODE_FILE_PREFIX$1.pid
+
+    log "Testing if $NODE_PID_FILE exists..."
+
+    if [ -f $NODE_PID_FILE ]
+    then
+        local node_pid=`cat $NODE_PID_FILE`
+        log "PID file $NODE_PID_FILE exists, checking process type of $node_pid..."
+
+        local process_name=$(get_process_name $node_pid)
+        log "Process name of $node_pid is '$process_name'"
+
+        if [ "$process_name" == "$NAME" ]
+        then
+            log "Process name matches '$NAME', slot not free"
+            echo "0"
+        else
+            log "Process name doesn't match '$NAME', slot free"
+            rm $NODE_PID_FILE
+            echo "1"
+        fi
+    else
+        echo "1"
+    fi
+}
+
+function service {
+    log "started"
+
+    while [ true ]; do
+        num_of_nodes=$(count_processes $NAME)
+
+        if [ "$num_of_nodes" -lt "$NODE_PROCESSES" ]
+        then
+            log "Not enough nodes running ($num_of_nodes < $NODE_PROCESSES)!"
+
+            for ((slot=1; slot <= $NODE_PROCESSES; slot++))
+            do
+                log "Testing slot $slot"
+
+                if [ $(is_slot_free $slot) == "1" ]
+                then
+                    log "Slot $slot free"
+                    start_node $slot
+                else
+                    log "Slot $slot not free"
+                fi
+            done
+        fi
+
+        sleep 2
+    done
+}
+
+function stop_nodes {
+    node_pids=$(list_pids $NAME)
+
+    for node_pid in $node_pids
+    do
+        log "stopping $node_pid"
+        kill $node_pid
+    done
+}
+
+if [ "x$1" != "x--" ]; then
+    $0 -- 1> $OUT_FILE 2>&1 &
+    exit 0
+fi
+
+function stop {
+    log "stopping"
+    stop_nodes
+    rm $PID_FILE
+    exit
+}
+
+trap stop SIGINT SIGTERM
+
+if [ ! -d $NODE_PID_FILE_DIR ] 
+then
+    mkdir -p `dirname $NODE_PID_FILE_DIR`
+fi
+    
+echo $PID > $PID_FILE
+
+service
+

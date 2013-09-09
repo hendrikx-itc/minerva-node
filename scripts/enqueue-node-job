@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Minerva Node job create and enqueue command line script
+"""
+from __future__ import print_function
+
+__docformat__ = "restructuredtext en"
+
+__copyright__ = """
+Copyright (C) 2008-2012 Hendrikx-ITC B.V.
+
+Distributed under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option) any later
+version.  The full license is in the file COPYING, distributed as part of
+this software.
+"""
+import os
+import sys
+import argparse
+import json
+
+from minerva.db import connect, extract_safe_url, OperationalError
+
+from minerva.system import jobqueue
+
+from minerva.node.config import load_config, get_defaults, ConfigError
+
+
+CONFIG_FILE = "enqueue-node-job.conf"
+
+
+def main():
+    """
+    Script entry point
+    """
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-c", "--configfile", dest="configfile",
+        default="/etc/minerva/enqueue-node-job.conf", help="the path to the config file")
+
+    parser.add_argument("--generate-configfile", action=GenerateConfigFileAction,
+        nargs=0, help="generate base config file")
+
+    parser.add_argument("job", help="job to enqueue")
+
+    args = parser.parse_args()
+
+    try:
+        config = load_config(get_defaults(CONFIG_FILE), args.configfile)
+    except ConfigError as exc:
+        print("error loading configuration: {}".format(exc))
+        return 1
+
+    process_session_queries = [
+            "SET application_name = 'enqueue-node-job'"]
+
+    try:
+        conn = connect(config["db_url"], setsession=process_session_queries)
+    except OperationalError as exc:
+        print(exc)
+        safe_url = extract_safe_url(config["db_url"])
+        print("while attempting to connect to {}".format(safe_url))
+        return 1
+
+    if os.path.isfile(args.job):
+        job = json.load(open(args.job, "rt")) + [1]
+    else:
+        job = json.loads(args.job) + [1]
+
+    store_job(conn, job)
+
+
+def store_job(conn, job):
+    job_type, description, size = job
+
+    job_source_id = 1
+
+    jobqueue.enqueue_job(conn, job_type, description, size, job_source_id)
+
+    conn.commit()
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(get_defaults(CONFIG_FILE))
+
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

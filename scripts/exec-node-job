@@ -1,0 +1,249 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+Minerva Node job execution command line script
+"""
+__docformat__ = "restructuredtext en"
+
+__copyright__ = """
+Copyright (C) 2012 Hendrikx-ITC B.V.
+
+Distributed under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option) any later
+version.  The full license is in the file COPYING, distributed as part of
+this software.
+"""
+import os
+import sys
+import argparse
+import logging
+import signal
+from functools import partial
+from time import sleep
+import threading
+from itertools import imap
+import json
+import traceback
+from operator import not_
+from contextlib import closing
+
+import pkg_resources
+import psycopg2.extras
+
+from minerva.util import iter_queue, after, each, compose, retry_while
+from minerva.system import helpers as system_helpers
+from minerva.db import parse_db_url, extract_safe_url, OperationalError
+
+from minerva.node.plugins import load_plugins
+from minerva.node.error import NodeError, JobError
+from minerva.node import Job, MinervaContext, log, version
+from minerva.node.config import load_config, get_defaults, ConfigError
+
+
+def main():
+    """
+    Script entry point
+    """
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-c", "--configfile", dest="configfile",
+        default="/etc/minerva/node.conf", help="the path to the config file")
+
+    parser.add_argument("--list-plugins", action=ListPluginsAction,
+        nargs=0, help="list installed plugins")
+
+    parser.add_argument("--generate-configfile", action=GenerateConfigFileAction,
+        nargs=0, help="generate base config file")
+
+    parser.add_argument("-v", "--version", action="version",
+        version="%(prog)s {}".format(version.__version__))
+
+    parser.add_argument("-j", "--job", help="job file")
+
+    parser.add_argument("--job-id", type=int, help="database Id of existing job record")
+
+    parser.add_argument("--debug", action="store_true", default=False, help="debug output")
+
+    args = parser.parse_args()
+
+    try:
+        config = load_config(get_defaults("node.conf"), args.configfile)
+    except ConfigError as exc:
+        print("error loading configuration: {}".format(exc))
+        return 1
+
+    setup_logging(logging.DEBUG)
+
+    if args.debug:
+        writer_db_logger = logging.getLogger("writer_db")
+        reader_db_logger = logging.getLogger("reader_db")
+    else:
+        writer_db_logger = None
+        reader_db_logger = None
+
+    create_writer_connection = partial(connect, config["writer_db_url"], writer_db_logger)
+    create_reader_connection = partial(connect, config["reader_db_url"], reader_db_logger)
+
+    writer_conn = create_writer_connection()
+    reader_conn = create_reader_connection()
+
+    if writer_conn and reader_conn:
+        safe_writer_url = extract_safe_url(config["writer_db_url"])
+        logging.info("connected to Minerva database {0} for writing".format(safe_writer_url))
+
+        safe_reader_url = extract_safe_url(config["reader_db_url"])
+        logging.info("connected to Minerva database {0} for reading".format(safe_reader_url))
+
+        minerva_context = MinervaContext(writer_conn, reader_conn)
+
+        plugins = [p(minerva_context) for p in load_plugins()]
+
+        for plugin in plugins:
+            logging.info("loaded plugin '{}'".format(plugin.name))
+
+        plugin_dict = dict((p.name, p) for p in plugins)
+
+        if args.job_id:
+            with closing(reader_conn.cursor()) as cursor:
+                job = get_job_by_id(cursor, plugin_dict, args.job_id)
+
+                if job is None:
+                    print("no job found with Id {}".format(args.job_id))
+        else:
+            if args.job:
+                job_description_json = open(args.job, "rt").read()
+                print(job_description_json)
+                job_description = json.loads(job_description_json)
+            else:
+                job_description = json.load(sys.stdin)
+
+            job = create_job(plugin_dict, job_description)
+
+        try:
+            process_job(writer_conn, job)
+        except JobError as exc:
+            logging.error(exc)
+            return 2
+
+
+def setup_logging(level, verbose=True):
+    root_logger = logging.getLogger("")
+
+    if verbose:
+        handler = logging.StreamHandler(sys.stdout)
+
+        root_logger.addHandler(handler)
+
+    root_logger.setLevel(level)
+
+
+def safe_rollback(conn):
+    try:
+        conn.rollback()
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
+        logging.info(str(exc))
+
+
+def safe_commit(conn):
+    try:
+        conn.commit()
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
+        logging.info(str(exc))
+
+
+def process_job(conn, job):
+    try:
+        job.execute()
+    except JobError as exc:
+        logging.error(exc)
+    except NodeError as exc:
+        logging.error(exc)
+    except Exception:
+        logging.error(traceback.format_exc())
+    else:
+        logging.info("finished {}".format(job))
+
+    conn.commit()
+
+
+def create_job(plugin_dict, job):
+    job_id, job_type, job_description, job_size, config = job
+
+    try:
+        job_description = json.loads(job_description)
+    except ValueError:
+        logging.error("corrupt job description for job {}".format(job_id))
+        return Job(job_type, job_id, job_description)
+
+    try:
+        plugin = plugin_dict[job_type]
+    except KeyError:
+        logging.error("no plugin found for job type '{0}'".format(job_type))
+        return Job(job_type, job_id, job_description)
+    else:
+        return plugin.create_job(job_id, job_description, config)
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(get_defaults("node.conf"))
+
+        sys.exit(0)
+
+
+class ListPluginsAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        plugins = load_plugins()
+
+        if len(plugins) == 0:
+            print("no plugins installed")
+        else:
+            for plugin in plugins:
+                print("-- {} - {}".format(plugin.name, plugin.description))
+
+        sys.exit(0)
+
+
+def get_job_by_id(cursor, plugin_dict, job_id):
+    query = (
+        "SELECT job.id, job.type, job.description, job.size, js.config "
+        "FROM system.job "
+        "JOIN system.job_source js ON js.id = job.job_source_id "
+        "WHERE job.id = %s")
+
+    args = (job_id, )
+
+    cursor.execute(query, args)
+
+    if cursor.rowcount == 1:
+        record = cursor.fetchone()
+
+        return create_job(plugin_dict, record)
+    elif cursor.rowcount == 0:
+        return None
+    elif cursor.rowcount > 1:
+        raise Exception("more than 1 jobs match Id {}".format(job_id))
+
+
+def connect(db_url, logger):
+    scheme, user, password, host, port, database = parse_db_url(db_url)
+
+    if scheme != "postgresql":
+        raise Exception("Only PostgreSQL connections are supported")
+
+    session_queries = ["SET application_name = 'exec-node-job'"]
+
+    if logger:
+        conn = psycopg2.connect(database=database, user=user, password=password,
+            host=host, port=port, connection_factory=psycopg2.extras.LoggingConnection)
+
+        conn.initialize(logger)
+    else:
+        conn = psycopg2.connect(database=database, user=user, password=password,
+            host=host, port=port)
+
+    return conn
+
+
+if __name__ == "__main__":
+    sys.exit(main())

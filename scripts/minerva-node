@@ -1,0 +1,281 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+Minerva Node command line script
+"""
+__docformat__ = "restructuredtext en"
+
+__copyright__ = """
+Copyright (C) 2008-2013 Hendrikx-ITC B.V.
+
+Distributed under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option) any later
+version.  The full license is in the file COPYING, distributed as part of
+this software.
+"""
+import os
+import sys
+import argparse
+import logging
+import signal
+from functools import partial
+from time import sleep
+import threading
+from itertools import imap
+import json
+import traceback
+from operator import not_
+from contextlib import closing
+
+import pkg_resources
+import psycopg2
+
+from minerva.util import iter_queue, after, each, compose, retry_while
+from minerva.db import connect, extract_safe_url, OperationalError
+from minerva.system import jobqueue
+
+from minerva.node.plugins import load_plugins
+from minerva.node.error import NodeError, JobError
+from minerva.node import Job, MinervaContext, log, version, config
+from minerva.node.config import load_config, get_defaults, ConfigError
+
+
+SIGNAL_MAP = {
+    signal.SIGHUP: "SIGHUP",
+    signal.SIGKILL: "SIGKILL",
+    signal.SIGTERM: "SIGTERM",
+    signal.SIGINT: "SIGINT",
+    signal.SIGUSR1: "SIGUSR1"
+}
+
+NOJOB_TIMEOUT = 1
+
+
+class StartupError(Exception):
+    pass
+
+
+def main():
+    """
+    Script entry point
+    """
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-c", "--configfile", dest="configfile",
+        default="/etc/minerva/node.conf", help="the path to the config file")
+
+    parser.add_argument("--list-plugins", action=ListPluginsAction,
+        nargs=0, help="list installed plugins")
+
+    parser.add_argument("--generate-configfile", action=GenerateConfigFileAction,
+        nargs=0, help="generate base config file")
+
+    parser.add_argument("--slot", dest="slot", default=1, type=int, help="node slot number")
+
+    parser.add_argument("-v", "--version", action="version",
+        version="%(prog)s {}".format(version.__version__))
+
+    args = parser.parse_args()
+
+    try:
+        config = load_config(get_defaults("node.conf"), args.configfile)
+    except ConfigError as exc:
+        print("error loading configuration: {}".format(exc))
+        return 1
+
+    session_queries = ["SET application_name = 'node:process'"]
+
+    stop_event = threading.Event()
+
+    def log_signal(signum, _frame):
+        logging.info("received {0!s} signal".format(SIGNAL_MAP.get(signum, signum)))
+
+    stop_node = after(stop_event.set, log_signal)
+
+    signal.signal(signal.SIGTERM, stop_node)
+    signal.signal(signal.SIGINT, stop_node)
+    signal.signal(signal.SIGHUP, stop_node)
+
+    log_filename = "node_{0:d}.log".format(args.slot)
+
+    log.setup_logging(config["log_directory"], log_filename,
+        config["log_rotation_size"], config["log_level"])
+
+    create_writer_connection = partial(connect, config["writer_db_url"], setsession=session_queries)
+    create_reader_connection = partial(connect, config["reader_db_url"], setsession=session_queries)
+
+    handler_map = {
+        OperationalError: partial(logging.error, "could not connect to database, waiting")
+        }
+
+    retry_condition = compose(not_, stop_event.is_set)
+
+    writer_conn = retry_while(create_writer_connection, handler_map, retry_condition)
+    reader_conn = retry_while(create_reader_connection, handler_map, retry_condition)
+
+    if writer_conn and reader_conn:
+        safe_writer_url = extract_safe_url(config["writer_db_url"])
+        logging.info("connected to Minerva database {0} for writing".format(safe_writer_url))
+
+        safe_reader_url = extract_safe_url(config["reader_db_url"])
+        logging.info("connected to Minerva database {0} for reading".format(safe_reader_url))
+
+        minerva_context = MinervaContext(writer_conn, reader_conn)
+
+        node = setup_node(stop_event, minerva_context)
+
+        node.start()
+
+        logging.info("started")
+
+        while node.is_alive():
+            sleep(1)
+
+    logging.info("stopped")
+
+
+def setup_node(stop_event, minerva_context):
+    plugins = load_plugins()
+
+    for plugin in plugins:
+        logging.info("loaded plugin '{}'".format(plugin.name))
+
+    plugin_dict = dict((p.name, p(minerva_context)) for p in plugins)
+
+    job_producer = iter_queue(stop_event, partial(get_job, minerva_context.writer_conn), jobqueue.NoJobAvailable, NOJOB_TIMEOUT)
+
+    jobs = imap(partial(create_job, plugin_dict), job_producer)
+
+    process = partial(process_job, minerva_context.writer_conn)
+
+    consume_jobs = partial(each, process)
+
+    thread_fn = partial(consume_jobs, jobs)
+
+    return threading.Thread(target=thread_fn, name="Node")
+
+
+def get_job(conn):
+    try:
+        with closing(conn.cursor()) as cursor:
+            job = jobqueue.get_job(cursor)
+    except psycopg2.InterfaceError:
+        logging.error(traceback.format_exc())
+        raise jobqueue.NoJobAvailable()
+    except Exception:
+        logging.error(traceback.format_exc())
+        safe_rollback(conn)
+        raise jobqueue.NoJobAvailable()
+    else:
+        safe_commit(conn)
+
+    if job is None:
+        raise jobqueue.NoJobAvailable()
+
+    return job
+
+
+def safe_rollback(conn):
+    try:
+        conn.rollback()
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
+        logging.info(str(exc))
+
+
+def safe_commit(conn):
+    try:
+        conn.commit()
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
+        logging.info(str(exc))
+
+
+def finish_job(conn, job_id):
+    try:
+        jobqueue.finish_job(conn, job_id)
+        conn.commit()
+    except Exception as exc:
+        logging.error(exc)
+        return False
+    else:
+        return True
+
+
+def fail_job(conn, job_id, message):
+    try:
+        jobqueue.fail_job(conn, job_id, message)
+        conn.commit()
+    except Exception as exc:
+        logging.error(exc)
+        return False
+    else:
+        return True
+
+
+#def do_while(condition=k(True), fn):
+#	while condition():
+#		fn()
+
+
+def process_job(conn, job):
+    try:
+        job.execute()
+    except JobError as exc:
+        safe_rollback(conn)
+        logging.error(exc)
+        message = str(exc)
+        fail_job(conn, job.id, message)
+    except NodeError as exc:
+        safe_rollback(conn)
+        logging.error(exc)
+        message = str(exc)
+        fail_job(conn, job.id, message)
+    except Exception as exc:
+        safe_rollback(conn)
+        message = traceback.format_exc()
+        logging.error(message)
+        fail_job(conn, job.id, message)
+    else:
+        logging.info("finished job {} {}".format(job.id, job))
+        finish_job(conn, job.id)
+
+
+def create_job(plugin_dict, job):
+    job_id, job_type, job_description, job_size, config = job
+
+    try:
+        job_description = json.loads(job_description)
+    except ValueError:
+        logging.error("invalid job description for job {}".format(job_id))
+        return Job(job_type, job_id, job_description)
+
+    try:
+        plugin = plugin_dict[job_type]
+    except KeyError:
+        logging.error("no plugin found for job type '{0}'".format(job_type))
+        return Job(job_type, job_id, job_description)
+    else:
+        return plugin.create_job(job_id, job_description, config)
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(get_defaults("node.conf"))
+
+        sys.exit(0)
+
+
+class ListPluginsAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        plugins = load_plugins(None)
+
+        if len(plugins) == 0:
+            print("no plugins installed")
+        else:
+            for plugin in plugins:
+                print("-- {} - {}".format(plugin.name, plugin.description))
+
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
