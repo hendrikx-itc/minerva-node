@@ -1,0 +1,284 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+Script for doing ETL calculations (i.e. transform) and store result in database
+"""
+import os
+import sys
+import argparse
+import logging
+from datetime import datetime
+from contextlib import closing
+from logging.handlers import RotatingFileHandler
+from functools import partial
+
+from dateutil import parser as datetime_parser
+import pytz
+
+import psycopg2.errorcodes
+import psycopg2.extras
+
+from minerva.db import parse_db_url
+from minerva.db.query import Table
+from minerva.util import attrchecker, matches
+from minerva.util.config import parse_size, load_config, get_defaults, ConfigError
+
+from minerva_storage_trend.granularity import create_granularity
+
+from minerva.transform import __version__ as version, SCHEMA, MinervaContext
+from minerva.transform.types import Transformation, render_function_set_table
+from minerva.transform.helpers import get_all_function_sets
+
+
+package_name = "minerva.transform"
+script_name = os.path.basename(__file__)
+config_file = "{}.conf".format(script_name)
+
+
+LEVEL_MAP = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL}
+
+
+def main():
+    parser = argparse.ArgumentParser(
+            description="Execute transforming module(s) and store results in Minerva")
+
+    parser.add_argument("--version", dest="show_version", default=False,
+        action="store_true", help="display version information and exit")
+
+    parser.add_argument("-t", "--timestamp", help="timestamp to transform"
+            " (yyyy-mm-ddThh:mm:ss+hh:ss)")
+
+    parser.add_argument("-f", "--function-set",
+            help="Name or Id of function set to execute. When ommitted all function \
+            sets are executed")
+
+    parser.add_argument("-g", "--granularity", type=int,
+            help="Granularity of source data")
+
+    parser.add_argument("--dest-granularity", type=int,
+            help="granularity of destination")
+
+    parser.add_argument("--dest-entitytype",
+            help="name of destination entity type")
+
+    parser.add_argument("-c", "--configfile",
+            default="/etc/minerva/transform.conf", help="path to config file")
+
+    parser.add_argument("--generate-configfile",
+            action=GenerateConfigFileAction, nargs=0,
+            help="generate default config file")
+
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+            help="verbose output")
+
+    parser.add_argument("--debug", action="store_true", default=False,
+            help="log and show debug output")
+
+    parser.add_argument("-l", "--list", action="store_true", default=False,
+            help="list function sets")
+
+    parser.add_argument("--start", help="start of range to transform")
+
+    parser.add_argument("--end", help="end of range to transform")
+
+    parser.add_argument("--all-unfinished", action="store_true", default=False,
+            help="run all unfinished transformations as known in state table")
+
+    args = parser.parse_args()
+
+    if args.show_version:
+        print("transform {0}".format(version))
+        return
+
+    if args.timestamp:
+        dest_timestamps = [datetime_parser.parse(args.timestamp)]
+    elif args.start or args.end:
+        start_timestamp = datetime_parser.parse(args.start)
+
+        if args.end:
+            end_timestamp = datetime_parser.parse(args.end)
+        else:
+            end_timestamp = pytz.utc.localize(datetime.utcnow())
+
+        granularity = create_granularity("900")
+
+        dest_timestamps = create_range(granularity, start_timestamp, end_timestamp)
+    else:
+        dest_timestamps = [pytz.utc.localize(datetime.utcnow())]
+
+    try:
+        config = load_config(get_defaults(package_name, config_file), args.configfile)
+    except ConfigError as exc:
+        print("error loading configuration: {}".format(exc))
+        return 1
+
+    log_level = LEVEL_MAP[config["log_level"]]
+
+    if args.debug:
+        log_level = logging.DEBUG
+
+    logger = setup_file_logging(config["log_directory"], config["log_filename"],
+        config["log_rotation_size"], log_level)
+
+    if args.verbose or args.debug:
+        enable_console_logging(logger)
+
+    if log_level == logging.DEBUG:
+        reader_logger = logging.getLogger("reader")
+        writer_logger = logging.getLogger("writer")
+    else:
+        reader_logger = None
+        writer_logger = None
+
+    connect_to_source = partial(connect, config["reader_db_url"], reader_logger)
+    connect_to_dest = partial(connect, config["writer_db_url"], writer_logger)
+
+    if args.all_unfinished:
+        with closing(connect_to_dest()) as dest_conn:
+            function_sets = get_all_function_sets(dest_conn)
+
+            function_sets_by_id = dict([(f.id, f) for f in function_sets])
+
+            with closing(dest_conn.cursor()) as cursor:
+                transformation_states = get_unfinished_transformations(cursor)
+
+                transformations = [
+                        Transformation(function_sets_by_id[function_set_id], dest_timestamp)
+                        for function_set_id, dest_timestamp in transformation_states]
+    else:
+        constraints = []
+
+        if args.function_set:
+            try:
+                function_set_id = int(args.function_set)
+            except:
+                constraints.append(attrchecker("name", args.function_set))
+            else:
+                constraints.append(attrchecker("id", function_set_id))
+
+        if args.granularity:
+            constraints.append(attrchecker("source_granularity", args.granularity))
+
+        if args.dest_granularity:
+            constraints.append(attrchecker("dest_trendstore.granularity",
+                    args.dest_granularity))
+
+        if args.dest_entitytype:
+            constraints.append(attrchecker("dest_trendstore.entitytype.name",
+                    args.dest_entitytype))
+
+        function_set_filter = partial(matches, constraints)
+
+        with closing(connect_to_dest()) as dest_conn:
+            function_sets = get_all_function_sets(dest_conn)
+
+            filtered_function_sets = filter(function_set_filter, function_sets)
+
+            if args.list:
+                print(render_function_set_table(filtered_function_sets))
+
+                return 0
+
+            transformations = [
+                    Transformation(f, t)
+                        for f in filtered_function_sets
+                            for t in dest_timestamps if timestamp_matches_function_set(f, t)]
+
+    with closing(connect_to_dest()) as dest_conn:
+        with closing(connect_to_source()) as source_conn:
+            minerva_context = MinervaContext(dest_conn, source_conn)
+
+            for i, transformation in enumerate(transformations):
+                logging.info("{}/{}".format(i + 1, len(transformations)))
+
+                transformation.execute(minerva_context)
+
+    return 0
+
+
+def create_range(granularity, start, end):
+    timestamps = []
+
+    current = start
+
+    while current <= end:
+        timestamps.append(current)
+
+        current = granularity.inc(current)
+
+    return timestamps
+
+
+def timestamp_matches_function_set(function_set, timestamp):
+    return function_set.dest_trendstore.granularity.truncate(timestamp) == timestamp
+
+
+def get_unfinished_transformations(cursor):
+    table = Table(SCHEMA, "state")
+
+    query = (
+        "SELECT function_set_id, dest_timestamp "
+        "FROM {} "
+        "WHERE processed_max_modified < max_modified AND dest_timestamp < now()").format(table.render())
+
+    cursor.execute(query)
+
+    return cursor.fetchall()
+
+
+def connect(db_url, logger=None):
+    scheme, user, password, host, port, database = parse_db_url(db_url)
+
+    assert scheme == "postgresql", "Only PostgreSQL connections are supported"
+
+    create_connection = partial(psycopg2.connect, database=database, user=user,
+            password=password, host=host, port=port)
+
+    if logger:
+        conn = create_connection(connection_factory=psycopg2.extras.LoggingConnection)
+
+        conn.initialize(logger)
+    else:
+        conn = create_connection()
+
+    return conn
+
+
+def enable_console_logging(logger):
+    handler = logging.StreamHandler(sys.stdout)
+
+    logger.addHandler(handler)
+
+
+def setup_file_logging(directory, filename, rotation_size, level):
+    """
+    Setup rotating file logging.
+    """
+    max_log_size = parse_size(rotation_size)
+
+    filepath = os.path.join(directory, filename)
+    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
+    handler.setLevel(level)
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+
+    rootlogger = logging.getLogger("")
+    rootlogger.setLevel(level)
+    rootlogger.addHandler(handler)
+    return rootlogger
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(get_defaults(package_name, config_file))
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

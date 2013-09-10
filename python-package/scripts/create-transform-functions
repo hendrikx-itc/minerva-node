@@ -1,0 +1,126 @@
+#!/usr/bin/python
+"""
+Script for creating transform functions based on CREATE FUNCTION
+sql statements found in specified directory
+"""
+import os
+import sys
+import argparse
+import logging
+import re
+from contextlib import closing
+from logging.handlers import RotatingFileHandler
+from StringIO import StringIO
+
+from configobj import ConfigObj
+
+from minerva.db import connect
+from minerva.util import parse_size
+
+
+SCHEMA = "transform"
+
+DEFAULT_CONFIG = """\
+db_url = postgresql://minerva:minerva@localhost/minerva
+sql_directory = /usr/local/lib/minerva/transform/
+log_directory = /var/log/minerva/
+log_filename = create-transform-functions.log
+log_rotation_size = 10MB
+log_level = INFO"""
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Create functions in Minerva database, transform schema")
+
+    parser.add_argument("-c", "--configfile",
+        default="/etc/minerva/create-transform-functions.conf", help="path to config file")
+
+    parser.add_argument("--generate-configfile",
+        action=GenerateConfigFileAction, nargs=0, help="generate default config file")
+
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+        help="verbose output")
+
+    args = parser.parse_args()
+    config = get_config(args)
+
+    setup_logging(args.verbose)
+    setup_file_logging(config["log_directory"], config["log_filename"],
+        config["log_rotation_size"], config["log_level"])
+
+    function_name_regex = re.compile(".* \"?(\w+)\"?\(")
+
+    with closing(connect(config["db_url"])) as conn:
+        with closing(conn.cursor()) as cursor:
+            cursor.execute("SET search_path = {0}".format(SCHEMA))
+            for (dirpath, dirnames, filenames) in os.walk(config["sql_directory"]):
+                for filename in filenames:
+                    sql_file = os.path.join(dirpath, filename)
+                    with closing(open(sql_file, "r")) as sql:
+                        query = sql.read()
+                        cursor.execute(query)
+                        logging.info("Created function {0}.{1} ".format(SCHEMA,
+                            function_name_regex.match(query).groups()[0]))
+
+        conn.commit()
+
+        return 0
+
+
+def setup_logging(verbose):
+    root_logger = logging.getLogger("")
+
+    if verbose:
+        handler = logging.StreamHandler(sys.stdout)
+        root_logger.addHandler(handler)
+
+    root_logger.setLevel(logging.INFO)
+
+
+def setup_file_logging(directory, filename, rotation_size, level):
+    """
+    Setup rotating file logging.
+    """
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL}
+
+    max_log_size = parse_size(rotation_size)
+
+    filepath = os.path.join(directory, filename)
+    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
+    handler.setLevel(level_map[level])
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+
+    rootlogger = logging.getLogger("")
+    rootlogger.setLevel(level_map[level])
+    rootlogger.addHandler(handler)
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(DEFAULT_CONFIG)
+        sys.exit(0)
+
+
+def get_config(args):
+
+    config = ConfigObj(StringIO(DEFAULT_CONFIG))
+
+    if os.path.isfile(args.configfile):
+        custom_config = ConfigObj(args.configfile)
+        config.merge(custom_config)
+    else:
+        print("'{0}' doesn't exist. Using default config.".format(args.configfile))
+
+    return config
+
+
+if __name__ == "__main__":
+    sys.exit(main())

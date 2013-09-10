@@ -1,0 +1,240 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+Script for doing ETL calculations (i.e. transform) and store result in database
+"""
+import os
+import sys
+import argparse
+import traceback
+import logging
+import pytz
+from datetime import datetime, timedelta, time
+from contextlib import closing
+from logging.handlers import RotatingFileHandler
+from StringIO import StringIO
+from functools import partial
+from operator import add, le, eq, contains, itemgetter, attrgetter
+import itertools
+
+from configobj import ConfigObj
+
+from minerva.db import connect
+from minerva.storage import get_plugin
+from minerva.directory import helpers
+from minerva.directory.helpers import get_datasource_by_id, \
+    get_entitytype_by_id
+from minerva.util import parse_size, attrchecker, matches
+from minerva.util.tabulate import render_table
+from minerva.db.util import enquote_column_name
+
+from minerva.transform import SCHEMA
+from minerva.transform.helpers import get_function_set, get_function_sets_by_name, \
+    get_all_function_sets, is_custom_function, get_function_sets_by
+
+
+DEFAULT_CONFIG = """\
+source_db_uri = postgresql://<user>:<password>@<host>/<minerva_database>
+dest_db_uri = postgresql://<user>:<password>@<host>/<_minerva_database>
+delay = 0
+timezone = Europe/Amsterdam
+log_directory = /var/log/minerva/
+log_filename = transform.log
+log_rotation_size = 10MB
+log_level = INFO"""
+
+def main():
+    parser = argparse.ArgumentParser(
+            description="Create transforming jobs")
+
+    parser.add_argument("-t", "--timestamp",  help="Timestamp specifying data to "
+            "process (%%Y%%m%%d_%%H%%M%%S). When ommitted now() is used." )
+
+    parser.add_argument("-f", "--function-set",
+            help="Name of function_set to execute. When ommitted all function sets are executed")
+
+    parser.add_argument("-g", "--granularity", type=int,
+            help="Granularity of source data")
+
+    parser.add_argument("--dest-granularity", type=int,
+            help="granularity of destination")
+
+    parser.add_argument("--dest-entitytype",
+            help="name of destination entity type")
+
+    parser.add_argument("-d", "--delay", type=int, help="Delay in seconds")
+
+    parser.add_argument("-c", "--configfile",
+            default="/etc/minerva/transform.conf", help="path to config file")
+
+    parser.add_argument("--generate-configfile",
+            action=GenerateConfigFileAction, nargs=0, help="generate default config file")
+
+    parser.add_argument("-v", "--verbose", action="store_true", default=False,
+            help="verbose output")
+
+    parser.add_argument("-l", "--list", action="store_true", default=False,
+            help="list function sets")
+
+    args = parser.parse_args()
+
+    config = get_config(args.configfile)
+
+    setup_logging(args.verbose)
+    setup_file_logging(config["log_directory"], config["log_filename"],
+        config["log_rotation_size"], config["log_level"])
+
+    connect_to_source = partial(connect, config["source_db_uri"])
+    connect_to_dest = partial(connect, config["dest_db_uri"])
+
+    constraints = []
+
+    if args.function_set:
+        constraints.append(attrchecker("name", args.function_set))
+
+    if args.granularity:
+        constraints.append(attrchecker("source_granularity", args.granularity))
+
+    if args.dest_granularity:
+        constraints.append(attrchecker("dest_granularity", args.dest_granularity))
+
+    if args.dest_entitytype:
+        constraints.append(attrchecker("dest_entitytype.name", args.dest_entitytype))
+
+    function_set_filter = partial(matches, constraints)
+
+    with closing(connect_to_dest()) as dest_conn:
+        function_sets = get_all_function_sets(dest_conn)
+
+        filtered_function_sets = filter(function_set_filter, function_sets)
+
+        if args.list:
+            print(render_function_set_table(filtered_function_sets))
+
+            return 0
+
+        tzinfo = pytz.timezone(config["timezone"])
+
+        if not args.timestamp:
+            timestamp = datetime.now()
+        else:
+            timestamp = datetime.strptime(args.timestamp, "%Y%m%d_%H%M%S")
+
+        timestamp = tzinfo.localize(timestamp)
+
+        delay = args.delay if args.delay is not None else int(config["delay"])
+        timestamp -= timedelta(0, delay)
+
+        create_transform_jobs(dest_conn, filtered_function_sets, timestamp)
+
+    return 0
+
+
+def render_function_set_table(function_sets):
+    def make_table_row(function_set):
+        enabled = 'Yes' if function_set.enabled else 'No'
+
+        return [function_set.id, function_set.name, function_set.source_entitytype.name,
+                function_set.source_granularity, "->", function_set.dest_entitytype.name,
+                function_set.dest_granularity, enabled]
+
+    rows = map(make_table_row, function_sets)
+
+    column_names = ["id", "name", "src entitytype", "src granularity", "->",
+            "dest entitytype", "dest granularity", "enabled"]
+    column_align = "><<><<><"
+    column_sizes = ["max"] * len(column_names)
+
+    table = render_table(column_names, column_align, column_sizes, rows)
+
+    lines = table + ["({} function sets)".format(len(function_sets))]
+
+    return "\n".join(lines)
+
+
+def create_job(conn, function_set_id, timestamp):
+    query = (
+        "INSERT INTO transform.backlog (function_set_id, timestamp, start, \"end\") "
+        "VALUES (%s, %s, %s, %s)")
+
+    args = function_set_id, timestamp, None, None
+
+    with closing(conn.cursor()) as cursor:
+        cursor.execute(query, args)
+
+    conn.commit()
+
+
+def create_transform_jobs(conn, function_sets, timestamp):
+    plugin = get_plugin("trend")
+    for function_set in function_sets:
+        most_recent_timestamp = plugin.get_most_recent_timestamp(timestamp,
+            function_set.dest_granularity)
+
+        create_job(conn, function_set.id, most_recent_timestamp)
+
+
+def calc_dest_timestamp(dest_granularity, source_timestamp):
+    # Hack for whole hour timestamps
+    offset = timedelta(0, 1)
+
+    plugin = get_plugin("trend")
+    most_recent = plugin.get_most_recent_timestamp(source_timestamp - offset, dest_granularity)
+    return plugin.get_next_timestamp(most_recent, dest_granularity)
+
+
+def setup_logging(verbose):
+    root_logger = logging.getLogger("")
+
+    if verbose:
+        handler = logging.StreamHandler(sys.stdout)
+        root_logger.addHandler(handler)
+
+    root_logger.setLevel(logging.INFO)
+
+
+def setup_file_logging(directory, filename, rotation_size, level):
+    """
+    Setup rotating file logging.
+    """
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL}
+
+    max_log_size = parse_size(rotation_size)
+
+    filepath = os.path.join(directory, filename)
+    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
+    handler.setLevel(level_map[level])
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+
+    rootlogger = logging.getLogger("")
+    rootlogger.setLevel(level_map[level])
+    rootlogger.addHandler(handler)
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(DEFAULT_CONFIG)
+        sys.exit(0)
+
+
+def get_config(configfile):
+    config = ConfigObj(StringIO(DEFAULT_CONFIG))
+
+    if os.path.isfile(configfile):
+        custom_config = ConfigObj(configfile)
+        config.merge(custom_config)
+    else:
+        print("'{0}' doesn't exist. Using default config.".format(configfile))
+
+    return config
+
+
+if __name__ == "__main__":
+    sys.exit(main())

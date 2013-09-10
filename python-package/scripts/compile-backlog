@@ -1,0 +1,204 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Script for creating backlog jobs for transform.backlog table based on tables
+trend.modified and enabled function sets
+"""
+import os
+import sys
+import argparse
+import logging
+from contextlib import closing
+from logging.handlers import RotatingFileHandler
+from StringIO import StringIO
+from functools import partial
+from datetime import datetime
+import re
+
+import pytz
+from configobj import ConfigObj
+
+from minerva.db import connect
+from minerva.util import parse_size
+from minerva.util.config import get_config
+from minerva.storage import get_plugin
+from minerva.transform.helpers import get_all_function_sets
+
+
+DEFAULT_CONFIG = """\
+source_db_uri = postgresql://<user>:<password>@<host>/<minerva_database>
+dest_db_uri = postgresql://<user>:<password>@<host>/<_minerva_database>
+timezone = Europe/Amsterdam
+log_directory = /var/log/minerva/
+log_filename = compile-backlog.log
+log_rotation_size = 10MB
+log_level = INFO
+stable_after = 60"""
+
+
+def main():
+    parser = argparse.ArgumentParser(
+            description="Compile backlog based on trend.modified table")
+
+    parser.add_argument("-c", "--configfile",
+            default="/etc/minerva/compile-backlog.conf", help="path to config file")
+
+    parser.add_argument("--generate-configfile",
+            action=GenerateConfigFileAction, nargs=0, help="generate default config file")
+
+    parser.add_argument("--verbose", action="store_true", default=False)
+
+    parser.add_argument("--pretend", action="store_true", default=False,
+            help="don't write to database")
+
+    args = parser.parse_args()
+
+    config = get_config(DEFAULT_CONFIG, args.configfile)
+
+    setup_logging(args.verbose)
+    setup_file_logging(config["log_directory"], config["log_filename"],
+        config["log_rotation_size"], config["log_level"])
+
+    connect_to_dest = partial(connect, config["dest_db_uri"])
+    plugin = get_plugin("trend")
+
+    with closing(connect_to_dest()) as conn:
+        ts = pytz.utc.localize(datetime.utcnow())
+
+        prefixes = {}
+
+        for function_set in get_all_function_sets(conn):
+            if not function_set.enabled:
+                continue
+
+            source_table_names = set(function_set.source_table_names(conn, ts))
+
+            for prefix in map(get_table_prefix, source_table_names):
+                prefixes.setdefault(prefix, []).append(function_set)
+
+        for prefix, function_sets in prefixes.iteritems():
+            backlog_for_prefix = compile_backlog_for_prefix(conn, config.as_int("stable_after"), prefix)
+
+            backlog = []
+
+            for timestamp, observed, end in backlog_for_prefix:
+                for function_set in function_sets:
+                    most_recent_timestamp = plugin.get_most_recent_timestamp(
+                            ts.astimezone(function_set.dest_datasource.tzinfo),
+                            function_set.dest_granularity)
+
+                    if timestamp <= most_recent_timestamp:
+                        logging.debug("backlog item {}, {} -> {}".format(function_set.name, timestamp, most_recent_timestamp))
+
+                        backlog_item = function_set.id, timestamp, observed, end
+
+                        backlog.append(backlog_item)
+
+            write_backlog(conn, backlog)
+
+        if not args.pretend:
+            conn.commit()
+
+    return 0
+
+
+def write_backlog(conn, backlog):
+    # insert all combinations of function_set and table into transform.backlog
+    # take 'most recent timestamp' into account - e.g. daily aggregation gets relavant
+    # backlog after 0:00 for the previous day' -> create function on
+    # function set for retrieving most recent timestamp?
+    insert_backlog_query = (
+        "INSERT INTO transform.backlog (function_set_id, timestamp, start, \"end\") "
+        "VALUES (%s, %s, %s, %s)")
+
+    with closing(conn.cursor()) as cursor:
+        for backlog_item in backlog:
+            logging.debug(cursor.mogrify(insert_backlog_query, backlog_item))
+
+            cursor.execute(insert_backlog_query, backlog_item)
+
+
+def get_table_prefix(table_name):
+    """
+    Return prefix of trend table name: e.g. 'oss-rc-2g-pm_entitytype_qtr_20121006'
+    returns 'oss-rc-2g-pm_entitytype_qtr'
+    """
+    return re.match("(.*)_\d+$", table_name).groups()[0]
+
+
+def compile_backlog_for_prefix(conn, stable_after, table_prefix):
+    compile_criterium = (
+        "substring(table_name, '(.*)_\d+$') = %s AND ("
+            "(modified.observed < modified.\"end\" AND "
+            "modified.\"end\" < NOW() - INTERVAL '{stable_after} seconds') "
+            "OR "
+            "(modified.observed IS NULL AND "
+            "modified.end < NOW() - INTERVAL '{stable_after} seconds')"
+        ")").format(stable_after=stable_after)
+
+    get_backlog_query = (
+        "SELECT timestamp, observed, \"end\" "
+        "FROM trend.modified "
+        "WHERE ({})").format(compile_criterium)
+
+    update_modified_query = (
+        "UPDATE trend.modified "
+        "SET observed = \"end\" "
+        "WHERE ({})").format(compile_criterium)
+
+    args = (table_prefix, )
+
+    with closing(conn.cursor()) as cursor:
+        cursor.execute(get_backlog_query, args)
+
+        rows = cursor.fetchall()
+
+        logging.debug(cursor.mogrify(update_modified_query, args))
+        cursor.execute(update_modified_query, args)
+
+    return rows
+
+
+def setup_logging(verbose):
+    root_logger = logging.getLogger("")
+
+    if verbose:
+        handler = logging.StreamHandler(sys.stdout)
+        root_logger.addHandler(handler)
+
+    root_logger.setLevel(logging.INFO)
+
+
+def setup_file_logging(directory, filename, rotation_size, level):
+    """
+    Setup rotating file logging.
+    """
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL}
+
+    max_log_size = parse_size(rotation_size)
+
+    filepath = os.path.join(directory, filename)
+    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
+    handler.setLevel(level_map[level])
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
+
+    rootlogger = logging.getLogger("")
+    rootlogger.setLevel(level_map[level])
+    rootlogger.addHandler(handler)
+
+
+class GenerateConfigFileAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(DEFAULT_CONFIG)
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
