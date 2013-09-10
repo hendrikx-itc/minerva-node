@@ -1,0 +1,13 @@
+Source: python-minerva-materialize
+Section: contrib/misc
+Priority: extra
+Maintainer: Hendrikx ITC (Software Package Signing Key) <info@hendrikx-itc.nl>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.4
+Homepage: http://www.hendrikx-itc.nl
+
+Package: python-minerva-materialize
+Architecture: all
+Depends: ${misc:Depends}
+Description: Materialization support for Minerva
+ <insert long description, indented with spaces>

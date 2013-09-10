@@ -1,0 +1,13 @@
+syntax: glob
+
+*.pyc
+*.egg-info/*
+build/*
+dist/*
+.directory
+.project
+.pydevproject
+.settings
+*/debian/files
+*/debian/changelog
+python-package/debian/python-minerva-materialize*
