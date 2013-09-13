@@ -1,13 +1,11 @@
-syntax: glob
 *.pyc
 .directory
 .project
 .pydevproject
-.settings/*
-build/*
+.settings
+build
 doc/_build
-dist/*
-*.egg-info/*
-dist/*
+dist
+*.egg-info
 debian/python-minerva-harvesting*
 debian/files
