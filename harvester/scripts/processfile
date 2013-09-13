@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2008-2011 Hendrikx-ITC B.V.
+Copyright (C) 2008-2013 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -27,10 +26,9 @@ import re
 import psycopg2.extras
 
 from minerva.db import parse_db_url
-from minerva.util.debug import log_call_basic
-from minerva.util import parse_size, compose, expand_args, unlines, k, \
-        make_tuple
-from minerva.util.config import get_defaults
+from minerva.util import compose, expand_args, unlines, k, \
+    make_tuple
+from minerva.util.config import parse_size, get_defaults
 from minerva.util.tabulate import render_table
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.storage import get_plugin
@@ -94,7 +92,7 @@ def main():
 
     parser.add_argument("--datasource", dest="datasource",
         help="Datasource to use")
-    
+
     parser.add_argument("--statistics", action="store_true", dest="statistics",
         default=False, help="Show statistics like number of packages, entities, etc.")
 
@@ -121,7 +119,7 @@ def main():
 
     logger = setup_logging(config["log_directory"], config["log_filename"],
         config["log_rotation_size"], log_level)
-    
+
     if args.verbose:
         logger.addHandler(logging.StreamHandler())
 
@@ -189,7 +187,7 @@ def main():
 
             process_file(file_path, harvest_plugin, parser_config, handle_package,
                 args.show_progress)
-    
+
     if args.statistics:
         logging.info("{} packages extracted".format(statistics.package_count))
 
