@@ -1,8 +1,0 @@
-syntax: glob
-*.pyc
-build/*
-dist/*
-*.egg-info/*
-dist/*
-debian/minerva-node*
-debian/files
