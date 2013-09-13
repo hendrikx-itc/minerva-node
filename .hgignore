@@ -1,8 +1,0 @@
-syntax: glob
-*.pyc
-build/*
-dist/*
-src/dispatcher.egg-info/*
-debian/minerva-dispatcher/*
-debian/minerva-dispatcher.*
-debian/files
