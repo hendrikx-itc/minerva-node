@@ -1,9 +1,8 @@
-syntax: glob
 *.pyc
-*.egg-info/*
-build/*
-dist/*
-python-package/debian/minerva-transform/*
+*.egg-info
+build
+dist
+python-package/debian/minerva-transform
 python-package/debian/minerva-transform.debhelper.log
 python-package/debian/minerva-transform.postinst.debhelper
 python-package/debian/minerva-transform.prerm.debhelper
