@@ -11,20 +11,20 @@ this software.
 """
 
 class HarvestPlugin(object):
-	def api_versions(self):
-		"""
-		Sub classes should return a list with supported API versions
-		"""
-		raise NotImplemented()
+    def api_versions(self):
+        """
+        Sub classes should return a list with supported API versions
+        """
+        raise NotImplemented()
 
-	def parser(self):
-		"""
-		Version 4
-		"""
-		raise NotImplemented()
+    def parser(self):
+        """
+        Version 4
+        """
+        raise NotImplemented()
 
-	def create_parser(self):
-		"""
-		Version 4
-		"""
-		raise NotImplemented()
+    def create_parser(self):
+        """
+        Version 4
+        """
+        raise NotImplemented()

@@ -14,11 +14,11 @@ this software.
 """
 
 class DataError(Exception):
-	pass
+    pass
 
 
 class HarvesterError(Exception):
-	"""
-	Base for all Harvester specific errors.
-	"""
-	pass
+    """
+    Base for all Harvester specific errors.
+    """
+    pass

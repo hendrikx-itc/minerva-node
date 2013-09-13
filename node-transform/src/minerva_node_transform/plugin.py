@@ -13,11 +13,11 @@ from minerva_node_transform.job import TransformJob
 
 
 class TransformPlugin(object):
-	name = "transform"
-	description = "a transforming plugin"
+    name = "transform"
+    description = "a transforming plugin"
 
-	def __init__(self, minerva_context):
-		self.minerva_context = minerva_context
+    def __init__(self, minerva_context):
+        self.minerva_context = minerva_context
 
-	def create_job(self, id, description, config):
-		return TransformJob(self.minerva_context, id, description)
+    def create_job(self, id, description, config):
+        return TransformJob(self.minerva_context, id, description)

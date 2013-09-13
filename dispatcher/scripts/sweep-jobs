@@ -32,7 +32,7 @@ from configobj import ConfigObj
 
 # pylint: disable-msg=E0611
 from minerva.util import parse_size, each, iter_queue, make_tuple, compose, \
-		no_op, after, retry_while, first
+        no_op, after, retry_while, first
 from minerva.util.config import load_config, get_defaults, ConfigError
 from minerva.db import connect, extract_safe_url
 from minerva.db.util import stored_procedure
@@ -40,7 +40,7 @@ from minerva.system import helpers as system_helpers
 from minerva.system.jobqueue import enqueue_job
 
 from minerva.dispatcher import __version__ as version, setup_notifier, JOB_TYPE, \
-		get_job_sources
+        get_job_sources
 
 DELAY = 1800 # seconds
 
@@ -49,160 +49,160 @@ script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
 
 def main():
-	"""
-	Script entry point
-	"""
-	config_file_path = os.path.join("/etc/minerva", config_file)
+    """
+    Script entry point
+    """
+    config_file_path = os.path.join("/etc/minerva", config_file)
 
-	parser = argparse.ArgumentParser(
-		description="sweep job sources for existing files/jobs")
+    parser = argparse.ArgumentParser(
+        description="sweep job sources for existing files/jobs")
 
-	parser.add_argument("--version", dest="show_version", default=False,
-		action="store_true", help="display version information and exit")
+    parser.add_argument("--version", dest="show_version", default=False,
+        action="store_true", help="display version information and exit")
 
-	parser.add_argument("-c", "--configfile", dest="configfile",
-		default=config_file_path, help="the path to the config file")
+    parser.add_argument("-c", "--configfile", dest="configfile",
+        default=config_file_path, help="the path to the config file")
 
-	parser.add_argument("--when-queue-empty", action="store_true",
-		help="only run when the job queue is empty")
+    parser.add_argument("--when-queue-empty", action="store_true",
+        help="only run when the job queue is empty")
 
-	parser.add_argument("--generate-configfile", dest="generate_configfile",
-		action=GenerateConfigFileAction, nargs=0, help="generate base config file")
+    parser.add_argument("--generate-configfile", dest="generate_configfile",
+        action=GenerateConfigFileAction, nargs=0, help="generate base config file")
 
-	args = parser.parse_args()
+    args = parser.parse_args()
 
-	if args.show_version:
-		print("Minerva Job Sweeper {0}".format(version))
-		return
+    if args.show_version:
+        print("Minerva Job Sweeper {0}".format(version))
+        return
 
-	try:
-		config = load_config(get_defaults(package_name, config_file), args.configfile)
-	except ConfigError as exc:
-		print("error loading configuration: {}".format(exc))
-		return 1
+    try:
+        config = load_config(get_defaults(package_name, config_file), args.configfile)
+    except ConfigError as exc:
+        print("error loading configuration: {}".format(exc))
+        return 1
 
-	try:
-		setup_logging(config["log_directory"], config["log_filename"],
-			config["log_rotation_size"], config["log_level"])
-	except IOError as exc:
-		print(exc)
-		return 1
+    try:
+        setup_logging(config["log_directory"], config["log_filename"],
+            config["log_rotation_size"], config["log_level"])
+    except IOError as exc:
+        print(exc)
+        return 1
 
-	db_url = config["db_url"]
+    db_url = config["db_url"]
 
-	with closing(connect(db_url)) as conn:
-		safe_url = extract_safe_url(db_url)
+    with closing(connect(db_url)) as conn:
+        safe_url = extract_safe_url(db_url)
 
-		logging.info("connected to Minerva database {0}".format(safe_url))
+        logging.info("connected to Minerva database {0}".format(safe_url))
 
-		with closing(conn.cursor()) as cursor:
-			job_sources = get_job_sources(cursor, JOB_TYPE)
+        with closing(conn.cursor()) as cursor:
+            job_sources = get_job_sources(cursor, JOB_TYPE)
 
-			if args.when_queue_empty:
-				queue_size = get_queue_size(cursor)
+            if args.when_queue_empty:
+                queue_size = get_queue_size(cursor)
 
-				if queue_size > 0:
-					return
+                if queue_size > 0:
+                    return
 
-		conn.commit()
+        conn.commit()
 
-		for job_source_id, description in sweep(job_sources):
-			process(conn, job_source_id, description)
+        for job_source_id, description in sweep(job_sources):
+            process(conn, job_source_id, description)
 
 
 def get_queue_size(cursor):
-	query = "SELECT count(*) FROM system.job_queue"
+    query = "SELECT count(*) FROM system.job_queue"
 
-	cursor.execute(query)
+    cursor.execute(query)
 
-	return first(cursor.fetchone())
+    return first(cursor.fetchone())
 
 
 def sweep(job_sources):
-	for job_source_id, name, job_type, config in job_sources:
-		config_parsed = json.loads(config)
+    for job_source_id, name, job_type, config in job_sources:
+        config_parsed = json.loads(config)
 
-		match_pattern = config_parsed["match_pattern"]
+        match_pattern = config_parsed["match_pattern"]
 
-		regex = re.compile(match_pattern)
+        regex = re.compile(match_pattern)
 
-		job_config = config_parsed["job_config"]
+        job_config = config_parsed["job_config"]
 
-		uri = config_parsed["uri"]
-		recursive = config_parsed["recursive"]
+        uri = config_parsed["uri"]
+        recursive = config_parsed["recursive"]
 
-		if recursive:
-			paths = (os.path.join(root, f) for root, _, files in os.walk(uri)
-					for f in files if regex.match(f))
-		else:
-			paths = (os.path.join(uri, f) for f in os.listdir(uri) if
-					os.path.isfile(f) and regex.match(f))
+        if recursive:
+            paths = (os.path.join(root, f) for root, _, files in os.walk(uri)
+                    for f in files if regex.match(f))
+        else:
+            paths = (os.path.join(uri, f) for f in os.listdir(uri) if
+                    os.path.isfile(f) and regex.match(f))
 
-		def is_old(path):
-			delay_delta = datetime.timedelta(seconds=DELAY)
+        def is_old(path):
+            delay_delta = datetime.timedelta(seconds=DELAY)
 
-			try:
-				timestamp = os.path.getmtime(path)
-			except OSError:
-				return False
-			else:
-				modified = datetime.datetime.fromtimestamp(timestamp)
+            try:
+                timestamp = os.path.getmtime(path)
+            except OSError:
+                return False
+            else:
+                modified = datetime.datetime.fromtimestamp(timestamp)
 
-				return modified < (datetime.datetime.now() - delay_delta)
+                return modified < (datetime.datetime.now() - delay_delta)
 
-		for path in filter(is_old, paths):
-			description = {"uri": path}
-			description.update(job_config)
+        for path in filter(is_old, paths):
+            description = {"uri": path}
+            description.update(job_config)
 
-			yield job_source_id, description
+            yield job_source_id, description
 
 
 def process(conn, job_source_id, job_description):
-	path = job_description["uri"]
+    path = job_description["uri"]
 
-	try:
-		filesize = os.path.getsize(path)
-	except OSError as exc:
-		logging.info("could not get size of file: {}".format(exc))
-		return
+    try:
+        filesize = os.path.getsize(path)
+    except OSError as exc:
+        logging.info("could not get size of file: {}".format(exc))
+        return
 
-	enqueue_job(conn, JOB_TYPE, json.dumps(job_description), filesize, job_source_id)
+    enqueue_job(conn, JOB_TYPE, json.dumps(job_description), filesize, job_source_id)
 
-	conn.commit()
+    conn.commit()
 
-	logging.info("enqueued {}".format(path))
+    logging.info("enqueued {}".format(path))
 
 
 def setup_logging(directory, filename, rotation_size, level):
-	"""
-	Setup logging with rotating log files.
-	"""
-	level_map = {
-		"DEBUG": logging.DEBUG,
-		"INFO": logging.INFO,
-		"WARNING": logging.WARNING,
-		"ERROR": logging.ERROR,
-		"CRITICAL": logging.CRITICAL}
+    """
+    Setup logging with rotating log files.
+    """
+    level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL}
 
-	max_log_size = parse_size(rotation_size)
+    max_log_size = parse_size(rotation_size)
 
-	filepath = os.path.join(directory, filename)
-	handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
-	handler.setLevel(level_map[level])
+    filepath = os.path.join(directory, filename)
+    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
+    handler.setLevel(level_map[level])
 
-	formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-	handler.setFormatter(formatter)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    handler.setFormatter(formatter)
 
-	rootlogger = logging.getLogger("")
-	rootlogger.setLevel(level_map[level])
-	rootlogger.addHandler(handler)
+    rootlogger = logging.getLogger("")
+    rootlogger.setLevel(level_map[level])
+    rootlogger.addHandler(handler)
 
 
 class GenerateConfigFileAction(argparse.Action):
-	def __call__(self, parser, namespace, values, option_string=None):
-		sys.stdout.write(get_defaults(package_name, config_file))
-		sys.exit(0)
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(get_defaults(package_name, config_file))
+        sys.exit(0)
 
 
 if __name__ == "__main__":
-	main()
+    main()

@@ -21,21 +21,21 @@ from minerva.core.minervaexception import MinervaException
 
 
 def test_dispatcher():
-	dispatcher = Dispatcher(datasources=[], max_queue_size=10, harvester_conn_provider=None)
+    dispatcher = Dispatcher(datasources=[], max_queue_size=10, harvester_conn_provider=None)
 
 def test_register_datasource():
-	datasources = []
+    datasources = []
 
-	def do_nothing():
-		pass
+    def do_nothing():
+        pass
 
-	def do_nothing():
-		pass
+    def do_nothing():
+        pass
 
-	datasource = DataSource("test_source", "measurement", "/data/measurement_data")
-	datasource.recursive = True
-	datasource.on_success = do_nothing
-	datasource.on_error = do_nothing
-	datasources.append(datasource)
+    datasource = DataSource("test_source", "measurement", "/data/measurement_data")
+    datasource.recursive = True
+    datasource.on_success = do_nothing
+    datasource.on_error = do_nothing
+    datasources.append(datasource)
 
-	dispatcher = Dispatcher(datasources=datasources, max_queue_size=10, harvester_conn_provider=None)
+    dispatcher = Dispatcher(datasources=datasources, max_queue_size=10, harvester_conn_provider=None)
