@@ -1,8 +1,7 @@
-syntax: glob
 *.pyc
-build/*
-*.egg-info/*
-dist/*
+build
+*.egg-info
+dist
 *.swp
 .DS_Store
 debian/files
