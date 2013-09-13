@@ -1,9 +1,8 @@
-syntax: glob
 *.pyc
 .directory
-build/*
-dist/*
-transform.egg-info/*
+build
+dist
+transform.egg-info
 debian/python-minerva-node-transform*
 debian/files
 debian/changelog
