@@ -28,7 +28,7 @@ from configobj import ConfigObj
 from pkg_resources import resource_string
 
 from minerva.instance import MinervaInstance
-from minerva.util import parse_size
+from minerva.util.config import parse_size
 from minerva.db import parse_db_url
 from minerva.csvimporter import import_csv
 

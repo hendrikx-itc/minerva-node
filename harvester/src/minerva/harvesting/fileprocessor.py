@@ -1,9 +1,8 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Provides the function process_file for processing a single file.
 """
-# -*- coding: utf-8 -*-
-
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
@@ -31,8 +30,8 @@ class ParseError(Exception):
     pass
 
 
-def process_file(filepath, plugin, parser_config, handle_package, \
-        show_progress=False):
+def process_file(filepath, plugin, parser_config, handle_package,
+                 show_progress=False):
     """
     Process a single file with specified plugin.
     """
@@ -53,7 +52,8 @@ def process_file(filepath, plugin, parser_config, handle_package, \
         try:
             parser.parse(data_file, filename)
         except DataError as exc:
-            raise ParseError("{0!s} at position {1:d}".format(exc, data_file.tell()))
+            raise ParseError("{0!s} at position {1:d}".format(
+                exc, data_file.tell()))
         except Exception:
             stack_trace = traceback.format_exc()
             position = data_file.tell()
@@ -65,16 +65,18 @@ def process_file(filepath, plugin, parser_config, handle_package, \
 
 def start_progress_reporter(data_file, condition):
     """
-    Start a daemon thread that reports about the progress (position in data_file).
+    Start a daemon thread that reports about the progress (position in
+    data_file).
     """
     data_file.seek(0, 2)
     size = data_file.tell()
     data_file.seek(0, 0)
 
     widgets = [progressbar.Percentage(), " ", progressbar.Bar(), " ",
-        progressbar.ETA()]
+               progressbar.ETA()]
 
-    progress_bar = progressbar.ProgressBar(maxval=size, widgets=widgets).start()
+    progress_bar = progressbar.ProgressBar(
+        maxval=size, widgets=widgets).start()
 
     def progress_reporter():
         """

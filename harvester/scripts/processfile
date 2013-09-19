@@ -30,6 +30,7 @@ from minerva.util import compose, expand_args, unlines, k, \
     make_tuple
 from minerva.util.config import parse_size, get_defaults
 from minerva.util.tabulate import render_table
+from minerva.instance import MinervaInstance
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.storage import get_plugin
 
@@ -51,50 +52,70 @@ level_map = {
 
 
 def main():
+    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
+                                              "default")
+
     configfile_path = os.path.join("/etc/minerva/", config_file)
 
     parser = argparse.ArgumentParser(description="Script for processing files")
 
-    parser.add_argument("file_path", nargs="*",
+    parser.add_argument(
+        "file_path", nargs="*",
         help="Path of file that will be processed")
 
-    parser.add_argument("-p", "--plugin",
+    parser.add_argument(
+        "-i", "--instance", default=default_minerva_instance,
+        help="name of the minerva instance")
+
+    parser.add_argument("-u", "--user", help="user to connect to database")
+
+    parser.add_argument(
+        "-p", "--plugin",
         help="Harvester plug-in to use for processing file(s)")
 
-    parser.add_argument("-l", "--list-plugins", action="store_true",
+    parser.add_argument(
+        "-l", "--list-plugins", action="store_true",
         dest="list_plugins", help="List installed Harvester plug-ins")
 
-    parser.add_argument("-c", "--configfile", default=configfile_path,
+    parser.add_argument(
+        "-c", "--configfile", default=configfile_path,
         dest="configfile", help="Path to config file")
 
-    parser.add_argument("--parser-config", default="{}", dest="parserconfig",
+    parser.add_argument(
+        "--parser-config", default="{}", dest="parserconfig",
         help="Parser specific configuration")
 
-    parser.add_argument("--store", action="store_true", default=False,
+    parser.add_argument(
+        "--store", action="store_true", default=False,
         help="Write data to database")
 
-    parser.add_argument("--show-progress", action="store_true",
+    parser.add_argument(
+        "--show-progress", action="store_true",
         dest="show_progress", default=False, help="Show progressbar")
 
-    parser.add_argument("-v", "--verbose", action="store_true", dest="verbose",
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", dest="verbose",
         default=False, help="Produce verbose output")
 
-    parser.add_argument("--debug", action="store_true", dest="debug",
+    parser.add_argument(
+        "--debug", action="store_true", dest="debug",
         default=False, help="Produce debug output")
 
     parser.add_argument("--filter-dn", help="filter by distinguished name")
 
     parser.add_argument("--filter-trend", help="filter by trend name")
 
-    parser.add_argument("--generate-configfile",
-            action=GenerateConfigFileAction, nargs=0,
-            help="generate default config file")
+    parser.add_argument(
+        "--generate-configfile", action=GenerateConfigFileAction, nargs=0,
+        help="generate default config file")
 
-    parser.add_argument("--datasource", dest="datasource",
+    parser.add_argument(
+        "--datasource", dest="datasource", default="processfile",
         help="Datasource to use")
 
-    parser.add_argument("--statistics", action="store_true", dest="statistics",
-        default=False, help="Show statistics like number of packages, entities, etc.")
+    parser.add_argument(
+        "--statistics", action="store_true", dest="statistics", default=False,
+        help="Show statistics like number of packages, entities, etc.")
 
     args = parser.parse_args()
 
@@ -108,7 +129,12 @@ def main():
         print("Config file {0} could not be found.".format(args.configfile))
         return -1
 
+    minerva_instance = MinervaInstance.load(args.instance)
+
     config = ConfigObj(args.configfile)
+
+    user = config.get("database", {}).get("user") or args.user or "minerva_admin"
+    db_uri = minerva_instance.get_db_uri(user)
 
     log_level = level_map[config["log_level"]]
 
@@ -144,7 +170,6 @@ def main():
         print("Data type '{0}' not supported".format(args.plugin))
         return 1
 
-
     handle_package = partial(filter_package, entity_filter, trend_filter)
     handle_package = compose(handle_package, make_tuple)
 
@@ -154,24 +179,24 @@ def main():
     statistics = Statistics()
 
     if args.statistics:
-        handle_package = compose(extract_statistics(statistics), handle_package)
+        handle_package = compose(extract_statistics(statistics),
+                                 handle_package)
 
     if args.debug:
         db_logger = logging.getLogger("")
     else:
         db_logger = None
 
-    db_uri = config["db_uri"]
-
     with closing(connect(db_uri, db_logger)) as conn:
         with closing(conn.cursor()) as cursor:
             datasource = name_to_datasource(cursor, args.datasource)
 
         if args.store:
-            storageprovider = get_plugin(harvest_plugin.storagetype())(conn, api_version=4)
+            storageprovider = get_plugin(harvest_plugin.storagetype())(
+                conn, api_version=4)
 
             store_raw = compose(partial(storageprovider.store_raw, datasource),
-                    storageprovider.RawDataPackage)
+                                storageprovider.RawDataPackage)
 
             handle_package = compose(expand_args(store_raw), handle_package)
 
@@ -181,12 +206,13 @@ def main():
 
             message = (
                 "Start processing file {0} using plugin {1}"
-                " and config {2}").format(file_path, args.plugin, parser_config)
+                " and config {2}"
+            ).format(file_path, args.plugin, parser_config)
 
             logging.info(message)
 
-            process_file(file_path, harvest_plugin, parser_config, handle_package,
-                args.show_progress)
+            process_file(file_path, harvest_plugin, parser_config,
+                         handle_package, args.show_progress)
 
     if args.statistics:
         logging.info("{} packages extracted".format(statistics.package_count))
