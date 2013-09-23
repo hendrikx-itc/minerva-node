@@ -30,11 +30,11 @@ from pkg_resources import resource_string
 from minerva.instance import MinervaInstance
 from minerva.util.config import parse_size
 from minerva.db import parse_db_url
-from minerva.csvimporter import import_csv
+from minerva_csvimporter import import_csv
 
-DEFAULT_CONFIG = resource_string("minerva.csvimporter",
+DEFAULT_CONFIG = resource_string("minerva_csvimporter",
                                  "defaults/import-csv.conf")
-DEFAULT_PROFILE = resource_string("minerva.csvimporter", "defaults/profile")
+DEFAULT_PROFILE = resource_string("minerva_csvimporter", "defaults/profile")
 
 GRANULARITIES = {
     "qtr": 900,

@@ -5,7 +5,7 @@ from contextlib import closing
 import StringIO
 
 from nose.tools import eq_
-from minerva.csvimporter import import_csv
+from minerva_csvimporter import import_csv
 
 from minerva_db import connect
 

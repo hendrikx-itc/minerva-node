@@ -19,7 +19,7 @@ from minerva.directory.helpers import get_entitytype, \
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.directory.distinguishedname import explode
 
-from minerva.csvimporter import dialects
+from minerva_csvimporter import dialects
 
 
 class DataError(Exception):
