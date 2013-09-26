@@ -217,7 +217,7 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
         utc_timestamp = ts.astimezone(pytz.utc)
         utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
 
-        if storagetype == "delta":
+        if storagetype == "attribute":
             raw_datapackage = plugin.RawDataPackage(utc_timestamp_str, fields,
                                                     raw_data_rows)
 
@@ -232,6 +232,9 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
                 granularity, utc_timestamp_str, fields, raw_data_rows)
 
             plugin.store_raw(datasource, raw_datapackage)
+        else:
+            raise Exception(
+                "Unsupported storage class: {}".format(storagetype))
 
         conn.commit()
 
