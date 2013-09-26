@@ -1,4 +1,14 @@
-import sys
+# -*- coding: utf-8 -*-
+__docformat__ = "restructuredtext en"
+
+__copyright__ = """
+Copyright (C) 2008-2013 Hendrikx-ITC B.V.
+
+Distributed under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 3, or (at your option) any later
+version.  The full license is in the file COPYING, distributed as part of
+this software.
+"""
 import csv
 from datetime import datetime, timedelta
 import re
@@ -12,7 +22,6 @@ import codecs
 import pytz
 
 from minerva.util import compose, identity, k
-from minerva.util.debug import log_call
 from minerva.storage import get_plugin
 from minerva.directory.helpers import get_entitytype, \
     create_entitytype, NoSuchEntityTypeError, NoSuitablePluginError
@@ -30,7 +39,8 @@ class ConfigurationError(Exception):
     pass
 
 
-def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, file_name):
+def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
+               file_name):
     alias_type = "name"
 
     granularity = profile["granularity"]
@@ -104,7 +114,7 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
 
     record_checks = []
 
-    identifier_fields = re.findall("{(\w+)}", identifier)
+    identifier_fields = re.findall(r"{(\w+)}", identifier)
 
     #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
     is_identifier_available = compose(
@@ -115,7 +125,7 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
     if timestampcolumn and timestamp:
         # Use timestamp found in timestamp column, when empty use 'timestamp'
         get_timestamp = partial(get_value_by_key, timestampcolumn,
-            default=timestamp)
+                                default=timestamp)
 
     elif timestampcolumn:
         get_timestamp = partial(get_value_by_key, timestampcolumn)
@@ -130,9 +140,13 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
         if m:
             get_timestamp = k(m.group(1))
         else:
-            raise ConfigurationError("Could not match timestamp pattern '{}' in filename '{}'".format(timestamp_from_filename_regex, file_name))
+            raise ConfigurationError(
+                "Could not match timestamp pattern '{}' "
+                "in filename '{}'".format(
+                    timestamp_from_filename_regex, file_name))
     else:
-        raise ConfigurationError("No timestamp or column with timestamp found: "
+        raise ConfigurationError(
+            "No timestamp or column with timestamp found: "
             "please specify timestamp or timestampcolumn")
 
     include_record = partial(record_passes_checks, record_checks)
@@ -144,8 +158,8 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
         include = True
 
         if value_count != field_count:
-            msg = "Field mismatch in line {0} ({1} vs {2}): {3}".format(line_nr,
-                    field_count, value_count, row)
+            msg = "Field mismatch in line {0} ({1} vs {2}): {3}".format(
+                line_nr, field_count, value_count, row)
 
             if ignore_field_mismatches:
                 logging.info(msg)
@@ -159,13 +173,19 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
 
     if identifier_fields:
         #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
-        get_identifier = compose(extract_ident, partial(get_value_by_identifier_format, identifier))
+        get_identifier = compose(
+            extract_ident,
+            partial(get_value_by_identifier_format, identifier))
     else:
-        get_identifier = compose(extract_ident, partial(get_value_by_key, identifier))
+        get_identifier = compose(
+            extract_ident,
+            partial(get_value_by_key, identifier))
 
     get_dn_from_record = compose(identifier_to_dn, get_identifier)
 
-    records = [record for record in read_records(csv_reader, fields, include_row) if include_record(record)]
+    records = [record
+               for record in read_records(csv_reader, fields, include_row)
+               if include_record(record)]
 
     for timestamp, grouped_records in groupby(records, get_timestamp):
         ts = parse_ts(timestamp)
@@ -177,8 +197,9 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
 
             # apply value mapping
             if value_mapping:
-                values = [value_mapping.get(field, {}).get(record[field],
-                    record[field]) for field in fields]
+                values = [
+                    value_mapping.get(field, {}).get(record[field], record[field])
+                    for field in fields]
             else:
                 values = [record[field] for field in fields]
 
@@ -197,7 +218,8 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
         utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
 
         if storagetype == "delta":
-            raw_datapackage = plugin.RawDataPackage(utc_timestamp_str, fields, raw_data_rows)
+            raw_datapackage = plugin.RawDataPackage(utc_timestamp_str, fields,
+                                                    raw_data_rows)
 
             plugin.store_raw(datasource, raw_datapackage)
 
@@ -206,7 +228,8 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile, 
 
             trendstore = plugin.get_trendstore(datasource, entitytype, granularity)
 
-            raw_datapackage = plugin.RawDataPackage(granularity, utc_timestamp_str, fields, raw_data_rows)
+            raw_datapackage = plugin.RawDataPackage(
+                granularity, utc_timestamp_str, fields, raw_data_rows)
 
             plugin.store_raw(datasource, raw_datapackage)
 
@@ -234,7 +257,7 @@ def any_field_empty(field_names, record):
 
 def get_value_by_key(key, record, default=None):
     v = record[key]
-    if v :
+    if v:
         return v
     else:
         return default
@@ -252,13 +275,15 @@ def init_plugin(conn, storagetype):
     plugin = get_plugin(storagetype)(conn, api_version=4)
 
     if not plugin:
-        raise NoSuitablePluginError("Missing storage plugin {}".format(storagetype))
+        raise NoSuitablePluginError(
+            "Missing storage plugin {}".format(storagetype))
 
     return plugin
 
 
 def offset_timestamp(offset, timestamp):
-    ts_with_offset = (timestamp.astimezone(pytz.utc) + offset).astimezone(timestamp.tzinfo)
+    ts_with_offset = (timestamp.astimezone(pytz.utc) + offset).astimezone(
+        timestamp.tzinfo)
     #Deal with DST
     utc_offset_delta = timestamp.utcoffset() - ts_with_offset.utcoffset()
 
@@ -266,7 +291,8 @@ def offset_timestamp(offset, timestamp):
 
 
 def parse_timestamp(tzinfo, timestamp_format, timestamp_string):
-    return tzinfo.localize(datetime.strptime(timestamp_string, timestamp_format))
+    return tzinfo.localize(
+        datetime.strptime(timestamp_string, timestamp_format))
 
 
 def extract_identifier(pattern, value):
@@ -289,7 +315,8 @@ def check_header(header):
     Return None if header is OK, otherwise raise exception.
     """
     if any(len(field) == 0 for field in header):
-        raise DataError("Empty field name in header: {}".format(",".join(header)))
+        raise DataError(
+            "Empty field name in header: {}".format(",".join(header)))
 
     duplicates = get_duplicates(header)
 
@@ -359,9 +386,11 @@ def get_dn_by_entitytype_and_alias(conn, entitytype_id, alias_type_id, alias):
 
             return dn
         elif cursor.rowcount == 0:
-            raise ConfigurationError("Identifier {} is not found".format(alias))
+            raise ConfigurationError(
+                "Identifier {} is not found".format(alias))
         elif cursor.rowcount > 1:
-            raise ConfigurationError("Identifier {} is not unique".format(alias))
+            raise ConfigurationError(
+                "Identifier {} is not unique".format(alias))
 
 
 def recode_utf8(lines):
