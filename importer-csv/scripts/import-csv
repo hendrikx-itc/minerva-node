@@ -246,9 +246,6 @@ def get_config(args):
     if os.path.isfile(args.configfile):
         custom_config = ConfigObj(args.configfile)
         config.merge(custom_config)
-    else:
-        print("'{0}' doesn't exist. Using default config.".format(
-            args.configfile))
 
     return config
 
