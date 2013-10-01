@@ -143,7 +143,7 @@ BEGIN
 
 	UPDATE materialization.state SET processed_max_modified = result.processed_max_modified
 	FROM materialization.type
-	WHERE type.id = state.type_id
+	WHERE type.id = state.type_id AND state.timestamp = $3
 	AND type.src_trendstore_id = $1.id
 	AND type.dst_trendstore_id = $2.id;
 
