@@ -62,6 +62,7 @@ CREATE TABLE state (
 	processed_max_modified timestamp with time zone DEFAULT NULL,
 	max_modified timestamp with time zone NOT NULL,
 	sources source_modified[] DEFAULT NULL,
+	processed_sources source_modified[] DEFAULT NULL,
 	job_id integer DEFAULT NULL
 );
 

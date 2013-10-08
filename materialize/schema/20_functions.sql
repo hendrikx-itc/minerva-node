@@ -101,6 +101,7 @@ DECLARE
 	row_count integer;
 	result materialization.materialization_result;
 	replicated_server_conn system.setting;
+	sources_state materialization.source_modified[];
 BEGIN
 	schema_name = 'trend';
 	table_name = trend.to_base_table_name(src);
@@ -131,7 +132,7 @@ BEGIN
 	FROM
 		trend.table_columns(schema_name, table_name);
 
-	max_modified_query = format('SELECT max_modified
+	sources_query = format('SELECT sources
 	FROM materialization.materializables mz
 	JOIN materialization.type ON type.id = mz.type_id
 	WHERE
@@ -146,7 +147,7 @@ BEGIN
 
 	IF replicated_server_conn IS NULL THEN
 		-- Local materialization
-		EXECUTE max_modified_query INTO result.processed_max_modified;
+		EXECUTE sources_query INTO sources_state;
 		EXECUTE format('INSERT INTO trend.%I (%s) %s', dst_partition.table_name, columns_part, data_query);
 	ELSE
 		-- Remote materialization
@@ -157,8 +158,8 @@ BEGIN
 		FROM
 			trend.table_columns(schema_name, table_name) col;
 
-		SELECT max_modified INTO result.processed_max_modified
-		FROM public.dblink(conn_str, max_modified_query) AS r (max_modified timestamp with time zone);
+		SELECT sources INTO sources_state
+		FROM public.dblink(conn_str, sources_query) AS r (sources materialization.source_modified[]);
 
 		EXECUTE format('INSERT INTO trend.%I (%s) SELECT * FROM public.dblink(%L, %L) AS rel (%s)',
 			dst_partition.table_name, columns_part, conn_str, data_query, column_defs_part);
@@ -171,7 +172,7 @@ BEGIN
 		RETURN result;
 	END IF;
 
-	UPDATE materialization.state SET processed_max_modified = result.processed_max_modified
+	UPDATE materialization.state SET processed_sources = sources_state
 	FROM materialization.type
 	WHERE type.id = state.type_id AND state.timestamp = $3
 	AND type.src_trendstore_id = $1.id

@@ -19,7 +19,7 @@ CREATE OR REPLACE VIEW tagged_runnable_materializations AS
 		JOIN trend.trendstore ts ON ts.id = mt.dst_trendstore_id
 		LEFT JOIN system.job j ON j.id = state.job_id
 		WHERE
-			(max_modified > processed_max_modified OR processed_max_modified IS NULL)
+			(sources <> processed_sources OR processed_sources IS NULL)
 			AND (state.job_id IS NULL OR NOT j.state IN ('queued', 'running'))
 			AND materialization.runnable(mt, timestamp, max_modified)
 		ORDER BY ts.granularity ASC, timestamp DESC;
