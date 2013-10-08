@@ -17,36 +17,66 @@ AS $$
 $$ LANGUAGE SQL STABLE STRICT;
 
 
-CREATE OR REPLACE FUNCTION update_state()
-	RETURNS void
+CREATE OR REPLACE FUNCTION add_new_state()
+	RETURNS integer
 AS $$
-	INSERT INTO materialization.state(type_id, timestamp, max_modified)
-		SELECT mzb.type_id, mzb.timestamp, mzb.max_modified
-		FROM materialization.materializables mzb
-		LEFT JOIN materialization.state ON
-			state.type_id = mzb.type_id AND
-			state.timestamp = mzb.timestamp
-		WHERE state.type_id IS NULL;
+DECLARE
+	count integer;
+BEGIN
+	INSERT INTO materialization.state(type_id, timestamp, max_modified, sources)
+	SELECT type_id, timestamp, max_modified, sources
+	FROM materialization.new_materializables;
 
+	GET DIAGNOSTICS count = ROW_COUNT;
+
+	RETURN count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION update_modified_state()
+	RETURNS integer
+AS $$
+DECLARE
+	count integer;
+BEGIN
 	UPDATE materialization.state
-		SET max_modified = mzb.max_modified
-	FROM materialization.materializables mzb
+	SET max_modified = mzb.max_modified, sources = mzb.sources
+	FROM materialization.modified_materializables mzb
 	WHERE
 		state.type_id = mzb.type_id AND
-		state.timestamp = mzb.timestamp AND
-		(state.max_modified < mzb.max_modified OR state.max_modified IS NULL);
+		state.timestamp = mzb.timestamp;
 
-	WITH obsolete AS (
-		SELECT state.type_id, state.timestamp
-		FROM materialization.state
-		LEFT JOIN materialization.materializables mzs ON
-			mzs.type_id = state.type_id AND
-			mzs.timestamp = state.timestamp
-		WHERE mzs.type_id is null
-	)
+	GET DIAGNOSTICS count = ROW_COUNT;
+
+	RETURN count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION delete_obsolete_state()
+	RETURNS integer
+AS $$
+DECLARE
+	count integer;
+BEGIN
 	DELETE FROM materialization.state
-	USING obsolete
-	WHERE state.type_id = obsolete.type_id AND state.timestamp = obsolete.timestamp;
+	USING materialization.obsolete_state
+	WHERE
+		state.type_id = obsolete_state.type_id AND
+		state.timestamp = obsolete_state.timestamp;
+
+	GET DIAGNOSTICS count = ROW_COUNT;
+
+	RETURN count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION update_state()
+	RETURNS text
+AS $$
+	SELECT 'added: ' || materialization.add_new_state() || ', updated: ' || materialization.update_modified_state() || ', deleted: ' || materialization.delete_obsolete_state();
 $$ LANGUAGE SQL VOLATILE;
 
 
