@@ -13,14 +13,13 @@ this software.
 from setuptools import setup
 
 setup(
-    name="harvesting",
+    name="minerva-harvesting",
     version="3.0.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
-    install_requires=["minerva>=3.0.0"],
+    install_requires=["minerva>=3.0.0", "progressbar"],
     test_suite="nose.collector",
-    namespace_packages=["minerva"],
-    packages=["minerva", "minerva.harvesting"],
+    packages=["minerva_harvesting"],
     package_dir={"": "src"},
-    package_data={"minerva.harvesting": ["defaults/*"]},
+    package_data={"minerva_harvesting": ["defaults/*"]},
     scripts=["scripts/processfile", "scripts/checkfile"])

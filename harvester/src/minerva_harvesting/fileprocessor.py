@@ -23,7 +23,7 @@ import progressbar
 
 from minerva.util import compose
 
-from minerva.harvesting.error import DataError
+from minerva_harvesting.error import DataError
 
 
 class ParseError(Exception):

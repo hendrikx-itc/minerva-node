@@ -14,7 +14,6 @@ import os
 import sys
 import logging
 import json
-from logging.handlers import RotatingFileHandler
 import argparse
 from configobj import ConfigObj
 import pkg_resources
@@ -28,34 +27,25 @@ import psycopg2.extras
 from minerva.db import parse_db_url
 from minerva.util import compose, expand_args, unlines, k, \
     make_tuple
-from minerva.util.config import parse_size, get_defaults
+from minerva.util.config import get_defaults
 from minerva.util.tabulate import render_table
 from minerva.instance import MinervaInstance
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.storage import get_plugin
 
-from minerva.harvesting.fileprocessor import process_file
-from minerva.harvesting.plugins import ENTRYPOINT, load_plugins
+from minerva_harvesting.fileprocessor import process_file
+from minerva_harvesting.plugins import ENTRYPOINT, load_plugins
 
 
-package_name = "minerva.harvester"
+package_name = "minerva_harvesting"
 script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
-
-
-level_map = {
-    "DEBUG": logging.DEBUG,
-    "INFO": logging.INFO,
-    "WARNING": logging.WARNING,
-    "ERROR": logging.ERROR,
-    "CRITICAL": logging.CRITICAL}
+configfile_path = os.path.join("/etc/minerva/", config_file)
 
 
 def main():
     default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
                                               "default")
-
-    configfile_path = os.path.join("/etc/minerva/", config_file)
 
     parser = argparse.ArgumentParser(description="Script for processing files")
 
@@ -78,7 +68,7 @@ def main():
         dest="list_plugins", help="List installed Harvester plug-ins")
 
     parser.add_argument(
-        "-c", "--configfile", default=configfile_path,
+        "-c", "--configfile",
         dest="configfile", help="Path to config file")
 
     parser.add_argument(
@@ -125,29 +115,27 @@ def main():
 
         return 0
 
-    if not os.path.isfile(args.configfile):
-        print("Config file {0} could not be found.".format(args.configfile))
-        return -1
+    if args.configfile:
+        if not os.path.isfile(args.configfile):
+            print("Config file {0} could not be found.".format(args.configfile))
+            return -1
+
+        config = ConfigObj(args.configfile)
+    else:
+        defaults = get_defaults(package_name, config_file)
+        config = ConfigObj(defaults)
 
     minerva_instance = MinervaInstance.load(args.instance)
 
-    config = ConfigObj(args.configfile)
-
     user = config.get("database", {}).get("user") or args.user or "minerva_admin"
-    db_uri = minerva_instance.get_db_uri(user)
-
-    log_level = level_map[config["log_level"]]
 
     if args.debug:
-        log_level = logging.DEBUG
+        logging.root.setLevel(logging.DEBUG)
 
     parser_config = json.loads(args.parserconfig)
 
-    logger = setup_logging(config["log_directory"], config["log_filename"],
-        config["log_rotation_size"], log_level)
-
     if args.verbose:
-        logger.addHandler(logging.StreamHandler())
+        logging.root.addHandler(logging.StreamHandler())
 
     if not args.plugin:
         print("Harvester plug-in {0} could not be found.".format(args.plugin))
@@ -182,14 +170,11 @@ def main():
         handle_package = compose(extract_statistics(statistics),
                                  handle_package)
 
-    if args.debug:
-        db_logger = logging.getLogger("")
-    else:
-        db_logger = None
-
-    with closing(connect(db_uri, db_logger)) as conn:
+    with closing(minerva_instance.connect(user=user)) as conn:
         with closing(conn.cursor()) as cursor:
             datasource = name_to_datasource(cursor, args.datasource)
+
+        conn.commit()
 
         if args.store:
             storageprovider = get_plugin(harvest_plugin.storagetype())(
@@ -304,23 +289,6 @@ def connect(db_url, logger=None):
         conn = create_connection()
 
     return conn
-
-
-def setup_logging(directory, filename, rotation_size, level):
-    max_log_size = parse_size(rotation_size)
-
-    filepath = os.path.join(directory, filename)
-    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
-    handler.setLevel(level)
-
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger("")
-    root_logger.setLevel(level)
-    root_logger.addHandler(handler)
-
-    return root_logger
 
 
 if __name__ == "__main__":
