@@ -11,7 +11,7 @@ SET search_path = materialization, pg_catalog;
 -- View 'tagged_runnable_materializations'
 
 CREATE OR REPLACE VIEW tagged_runnable_materializations AS
-	SELECT state.type_id, timestamp, processed_max_modified, t.name as tag
+	SELECT state.type_id, timestamp, t.name as tag
 		FROM materialization.state
 		JOIN materialization.type_tag_link mtl ON mtl.type_id = state.type_id
 		JOIN directory.tag t ON t.id = mtl.tag_id
@@ -56,8 +56,6 @@ CREATE OR REPLACE VIEW materializable_source_state AS
 ALTER VIEW materializable_source_state OWNER TO minerva_admin;
 
 GRANT ALL ON materialization.materializable_source_state TO minerva_admin;
-
-GRANT ALL ON materialization.materializable_source_state TO minerva_admin;
 GRANT SELECT ON materialization.materializable_source_state TO minerva;
 GRANT INSERT,DELETE,UPDATE ON materialization.materializable_source_state TO minerva_writer;
 
@@ -68,7 +66,7 @@ CREATE OR REPLACE VIEW materializables AS
                 type_id,
                 timestamp,
                 max(modified) AS max_modified,
-		array_agg((trendstore_id, modified)::source_modified) AS sources
+		array_agg((trendstore_id, modified)::source_modified ORDER BY trendstore_id, modified) AS sources
         FROM materialization.materializable_source_state
         GROUP BY type_id, timestamp;
 

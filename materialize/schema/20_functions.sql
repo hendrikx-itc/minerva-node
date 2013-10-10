@@ -91,13 +91,12 @@ DECLARE
 	table_name character varying;
 	dst_table_name character varying;
 	dst_partition trend.partition;
-	max_modified_query character varying;
+	sources_query character varying;
 	data_query character varying;
 	conn_str character varying;
 	columns_part character varying;
 	column_defs_part character varying;
 	modified timestamp with time zone;
-	processed_max_modified timestamp with time zone;
 	row_count integer;
 	result materialization.materialization_result;
 	replicated_server_conn system.setting;
@@ -178,7 +177,7 @@ BEGIN
 	AND type.src_trendstore_id = $1.id
 	AND type.dst_trendstore_id = $2.id;
 
-	PERFORM trend.mark_modified(dst_partition.table_name, "timestamp", result.processed_max_modified);
+	PERFORM trend.mark_modified(dst_partition.table_name, "timestamp");
 
 	RETURN result;
 END;
