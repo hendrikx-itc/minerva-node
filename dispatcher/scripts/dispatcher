@@ -74,8 +74,8 @@ def main():
         description="watch job sources for new files/jobs")
 
     parser.add_argument(
-        "--version", dest="show_version", default=False,
-        action="store_true", help="display version information and exit")
+        "--version", action="version", version='%(prog)s {}'.format(version),
+        help="display version information and exit")
 
     parser.add_argument(
         "-c", "--configfile", dest="configfile",
@@ -87,10 +87,6 @@ def main():
         help="generate base config file")
 
     args = parser.parse_args()
-
-    if args.show_version:
-        print("Minerva Dispatcher {0}".format(version))
-        return
 
     try:
         config = load_config(get_defaults(package_name, config_file),
