@@ -72,9 +72,9 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
     unicode_reader = codecs.getreader(character_encoding)(csvfile)
 
-    utf8recoder = remove_nul(recode_utf8(unicode_reader))
+    recoder = remove_nul(unicode_reader)
 
-    csv_reader = csv.reader(utf8recoder, dialect=dialect)
+    csv_reader = csv.reader(recoder, dialect=dialect)
 
     if not fields:
         fields = csv_reader.next()
@@ -394,10 +394,6 @@ def get_dn_by_entitytype_and_alias(conn, entitytype_id, alias_type_id, alias):
         elif cursor.rowcount > 1:
             raise ConfigurationError(
                 "Identifier {} is not unique".format(alias))
-
-
-def recode_utf8(lines):
-    return (line.encode("utf-8") for line in lines)
 
 
 def remove_nul(lines):
