@@ -12,7 +12,7 @@ from minerva_storage_trend.trendstore import TrendStore, store_copy_from, \
 from minerva_storage_trend.datapackage import DataPackage
 from minerva_storage_trend.granularity import create_granularity
 
-from minerva.materialize.types import Materialization
+from minerva_materialize.types import Materialization
 
 from minerva_db import clear_database
 

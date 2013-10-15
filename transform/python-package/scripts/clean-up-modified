@@ -20,7 +20,7 @@ from minerva.db import connect
 from minerva.util import parse_size
 from minerva.util.config import get_config
 
-from minerva.transform.helpers import get_all_function_sets
+from minerva_transform.helpers import get_all_function_sets
 
 
 DEFAULT_CONFIG = """\

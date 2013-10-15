@@ -19,11 +19,10 @@ setup(
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=3.0"],
     test_suite="nose.collector",
-    namespace_packages=["minerva"],
-    packages=["minerva", "minerva.transform"],
+    packages=["minerva_transform"],
     package_dir={"": "src"},
-    package_data={"minerva.transform": ["defaults/*"]},
+    package_data={"minerva_transform": ["defaults/*"]},
     scripts=["scripts/create-transform-functions", "scripts/transform",
-        "scripts/create-transform-jobs", "scripts/compile-backlog",
-        "scripts/clean-up-modified"]
+             "scripts/create-transform-jobs", "scripts/compile-backlog",
+             "scripts/clean-up-modified"]
 )

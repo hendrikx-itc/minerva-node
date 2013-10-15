@@ -23,7 +23,7 @@ from minerva.db.query import Column, Insert
 from minerva.db.dbtransaction import DbTransaction, UpdateState
 
 from minerva.node import MinervaContext
-from minerva.transform.types import Transformation
+from minerva_transform.types import Transformation
 from minerva_db import reset_db, with_connection, \
         get_dummy_datasource, get_dummy_entitytype, TIMEZONE, add_function_set, \
         add_function_mapping, render_result

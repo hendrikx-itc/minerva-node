@@ -23,8 +23,8 @@ from minerva.util import head, tail, identity
 from minerva.util.tabulate import render_table
 from minerva.db.dbtransaction import DbAction
 
-from minerva.transform.version import __version__
-from minerva.transform.helpers import retrieve, store_txn
-from minerva.transform.types import MinervaContext
+from minerva_transform.version import __version__
+from minerva_transform.helpers import retrieve, store_txn
+from minerva_transform.types import MinervaContext
 
 SCHEMA = "transform"

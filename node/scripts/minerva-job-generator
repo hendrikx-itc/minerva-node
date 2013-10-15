@@ -33,7 +33,7 @@ from minerva.db import connect, extract_safe_url, OperationalError
 
 from minerva.system import jobqueue
 
-from minerva.node.config import load_config, get_defaults
+from minerva_node.config import load_config, get_defaults
 
 
 SIGNAL_MAP = {

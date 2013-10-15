@@ -49,7 +49,7 @@ from minerva.db.util import stored_procedure
 from minerva.system import helpers as system_helpers
 from minerva.system.jobqueue import enqueue_job
 
-from minerva.dispatcher import __version__ as version, setup_notifier, JOB_TYPE, \
+from minerva_dispatcher import __version__ as version, setup_notifier, JOB_TYPE, \
         get_job_sources
 
 TIMEOUT = 1.0
@@ -61,7 +61,7 @@ SIGNAL_MAP = {
     signal.SIGUSR1: "SIGUSR1"
 }
 
-package_name = "minerva.dispatcher"
+package_name = "minerva_dispatcher"
 script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
 

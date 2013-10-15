@@ -19,8 +19,7 @@ setup(
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=4.0"],
     test_suite="nose.collector",
-    namespace_packages=["minerva"],
-    packages=["minerva", "minerva.materialize"],
+    packages=["minerva_materialize"],
     package_dir={"": "src"},
     scripts=[]
 )

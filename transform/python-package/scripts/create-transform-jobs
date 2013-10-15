@@ -28,8 +28,8 @@ from minerva.util import parse_size, attrchecker, matches
 from minerva.util.tabulate import render_table
 from minerva.db.util import enquote_column_name
 
-from minerva.transform import SCHEMA
-from minerva.transform.helpers import get_function_set, get_function_sets_by_name, \
+from minerva_transform import SCHEMA
+from minerva_transform.helpers import get_function_set, get_function_sets_by_name, \
     get_all_function_sets, is_custom_function, get_function_sets_by
 
 

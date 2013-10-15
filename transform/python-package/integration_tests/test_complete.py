@@ -32,7 +32,7 @@ from minerva_db import reset_db, with_connection, \
         get_dummy_datasource, get_dummy_entitytype, TIMEZONE, add_function_set, \
         add_function_mapping, render_result, get_or_create_entity
 
-from minerva.transform.types import Transformation
+from minerva_transform.types import Transformation
 from util import render_datapackage
 
 ENTRYPOINT = "node.plugins"
@@ -138,7 +138,7 @@ def test_run(conn):
                 dest_granularity.name, None, [], None, True)
 
         entities = map(partial(get_or_create_entity, cursor), dns)
-        
+
         conn.commit()
 
         source_1 = create_source_1(source_granularity, entities)
@@ -172,7 +172,7 @@ def test_run(conn):
 
     logging.debug("source_2")
     logging.debug(unlines(render_datapackage(source_2)))
-    
+
     dest_timestamp = timestamp
 
     transformation = Transformation(function_set_qtr, dest_timestamp)

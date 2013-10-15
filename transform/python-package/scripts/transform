@@ -25,12 +25,12 @@ from minerva.util.config import parse_size, load_config, get_defaults, ConfigErr
 
 from minerva_storage_trend.granularity import create_granularity
 
-from minerva.transform import __version__ as version, SCHEMA, MinervaContext
-from minerva.transform.types import Transformation, render_function_set_table
-from minerva.transform.helpers import get_all_function_sets
+from minerva_transform import __version__ as version, SCHEMA, MinervaContext
+from minerva_transform.types import Transformation, render_function_set_table
+from minerva_transform.helpers import get_all_function_sets
 
 
-package_name = "minerva.transform"
+package_name = "minerva_transform"
 script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
 

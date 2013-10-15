@@ -16,7 +16,7 @@ from nose.tools import eq_, raises
 from minerva_db import reset_db, with_connection, \
         add_function_set, get_dummy_entitytype, get_dummy_datasource
 
-from minerva.transform.helpers import get_function_set, NoSuchFunctionSetError
+from minerva_transform.helpers import get_function_set, NoSuchFunctionSetError
 
 
 @raises(NoSuchFunctionSetError)

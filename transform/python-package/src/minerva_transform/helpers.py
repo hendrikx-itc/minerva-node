@@ -27,7 +27,7 @@ from minerva_storage_trend.helpers import get_table_names
 from minerva_storage_trend.trendstore import TrendStore
 from minerva_storage_trend.tables import PARTITION_SIZES
 
-from minerva.transform.types import FunctionSet, FunctionMapping
+from minerva_transform.types import FunctionSet, FunctionMapping
 
 
 SCHEMA = "transform"

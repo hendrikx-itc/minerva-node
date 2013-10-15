@@ -26,7 +26,7 @@ def get_defaults(name):
     """
     Return a string representing a default/template config file named `name`.
     """
-    return pkg_resources.resource_string("minerva.node", "defaults/{}".format(name))
+    return pkg_resources.resource_string("minerva_node", "defaults/{}".format(name))
 
 
 def load_config(defaults, path):

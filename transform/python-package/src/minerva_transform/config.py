@@ -26,4 +26,4 @@ def get_defaults(name):
     """
     Return a string representing a default/template config file named `name`.
     """
-    return resource_string("minerva.transform", "defaults/{}".format(name))
+    return resource_string("minerva_transform", "defaults/{}".format(name))
