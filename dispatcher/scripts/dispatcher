@@ -23,35 +23,32 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import os
+import sys
 import argparse
 import logging.handlers
 from logging.handlers import RotatingFileHandler
 import signal
-import StringIO
 from contextlib import closing
 from functools import partial
 import traceback
 import Queue
-import socket
 import threading
 import json
 from operator import not_
 
 import psycopg2.extensions
-from configobj import ConfigObj
 
 # pylint: disable-msg=E0611
 from minerva.util import each, iter_queue, make_tuple, compose, \
-        no_op, after, retry_while
+    no_op, after, retry_while
 from minerva.util.config import parse_size, load_config, get_defaults, \
     ConfigError
 from minerva.db import connect, extract_safe_url
 from minerva.db.util import stored_procedure
-from minerva.system import helpers as system_helpers
 from minerva.system.jobqueue import enqueue_job
 
-from minerva_dispatcher import __version__ as version, setup_notifier, JOB_TYPE, \
-        get_job_sources
+from minerva_dispatcher import __version__ as version, setup_notifier, \
+    JOB_TYPE, get_job_sources
 
 TIMEOUT = 1.0
 
@@ -76,14 +73,18 @@ def main():
     parser = argparse.ArgumentParser(
         description="watch job sources for new files/jobs")
 
-    parser.add_argument("--version", dest="show_version", default=False,
+    parser.add_argument(
+        "--version", dest="show_version", default=False,
         action="store_true", help="display version information and exit")
 
-    parser.add_argument("-c", "--configfile", dest="configfile",
+    parser.add_argument(
+        "-c", "--configfile", dest="configfile",
         default=config_file_path, help="the path to the config file")
 
-    parser.add_argument("--generate-configfile", dest="generate_configfile",
-        action=GenerateConfigFileAction, nargs=0, help="generate base config file")
+    parser.add_argument(
+        "--generate-configfile", dest="generate_configfile",
+        action=GenerateConfigFileAction, nargs=0,
+        help="generate base config file")
 
     args = parser.parse_args()
 
@@ -92,7 +93,8 @@ def main():
         return
 
     try:
-        config = load_config(get_defaults(package_name, config_file), args.configfile)
+        config = load_config(get_defaults(package_name, config_file),
+                             args.configfile)
     except ConfigError as exc:
         print("error loading configuration: {}".format(exc))
         return 1
@@ -106,7 +108,7 @@ def main():
 
     try:
         setup_logging(config["log_directory"], config["log_filename"],
-            config["log_rotation_size"], config["log_level"])
+                      config["log_rotation_size"], config["log_level"])
     except IOError as exc:
         print(exc)
         return 1
@@ -118,17 +120,17 @@ def main():
 
         logging.info("connected to Minerva database {0}".format(safe_url))
 
-        host_name = socket.gethostname()
-        script_name = get_script_name()
         pid = os.getpid()
 
         queue = Queue.Queue()
 
-        datasource_events = iter_queue(stop_event, queue.get_nowait, Queue.Empty, TIMEOUT)
+        datasource_events = iter_queue(stop_event, queue.get_nowait,
+                                       Queue.Empty, TIMEOUT)
 
         process_datasource_event = partial(process, conn, stop_event)
 
-        consumer_loop = partial(each, process_datasource_event, datasource_events)
+        consumer_loop = partial(each, process_datasource_event,
+                                datasource_events)
 
         consumer = threading.Thread(target=consumer_loop, name="consumer")
         consumer.start()
@@ -175,7 +177,8 @@ def process(conn, stop_event, item):
         logging.info("could not get size of file: {}".format(exc))
         return
 
-    e = partial(enqueue_job, conn, JOB_TYPE, json.dumps(job_description), filesize, job_source_id)
+    e = partial(enqueue_job, conn, JOB_TYPE, json.dumps(job_description),
+                filesize, job_source_id)
 
     # In case of a database shutdown, we first get an InterfaceError and the
     # next time an OperationalError
@@ -209,7 +212,8 @@ def setup_logging(directory, filename, rotation_size, level):
     max_log_size = parse_size(rotation_size)
 
     filepath = os.path.join(directory, filename)
-    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
+    handler = RotatingFileHandler(filepath, maxBytes=max_log_size,
+                                  backupCount=5)
     handler.setLevel(level_map[level])
 
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -233,4 +237,3 @@ def log_signal(signum, _frame):
 
 if __name__ == "__main__":
     main()
-
