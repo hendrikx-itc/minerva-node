@@ -1,6 +1,5 @@
-python-minerva-harvesting (3.0.0-0) UNRELEASED; urgency=low
+python-minerva-harvesting (4.3.9999-2-g4238124) unstable; urgency=low
 
-  * Rename package
+  * Scripted package build
 
- -- Alfred Blokland <alfred.blokland@hendrikx-itc.nl>  Thu, 18 Apr 2013 16:26:48 +0200
-
+ --  <>  Tue, 15 Oct 2013 14:58:09 +0200
