@@ -15,7 +15,7 @@ Dispatcher/harvest job sources look like this:
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2008, 2009 Hendrikx-ITC B.V.
+Copyright (C) 2008, 2013 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -41,9 +41,10 @@ import psycopg2.extensions
 from configobj import ConfigObj
 
 # pylint: disable-msg=E0611
-from minerva.util import parse_size, each, iter_queue, make_tuple, compose, \
+from minerva.util import each, iter_queue, make_tuple, compose, \
         no_op, after, retry_while
-from minerva.util.config import load_config, get_defaults, ConfigError
+from minerva.util.config import parse_size, load_config, get_defaults, \
+    ConfigError
 from minerva.db import connect, extract_safe_url
 from minerva.db.util import stored_procedure
 from minerva.system import helpers as system_helpers
