@@ -123,7 +123,7 @@ def main():
     user = args.user or "minerva_admin"
 
     def connect():
-        while not stop_event.set:
+        while not stop_event.is_set():
             try:
                 return minerva_instance.connect(user=user)
             except Exception as exc:
