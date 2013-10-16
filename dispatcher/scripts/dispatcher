@@ -120,7 +120,7 @@ def main():
         print(exc)
         return 1
 
-    user = config['database']['user'] or args.user or "minerva_admin"
+    user = args.user or config['database']['user'] or "minerva_admin"
 
     def connect():
         while not stop_event.is_set():
