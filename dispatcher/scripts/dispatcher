@@ -122,7 +122,15 @@ def main():
 
     user = args.user or "minerva_admin"
 
-    with closing(minerva_instance.connect(user=user)) as conn:
+    def connect():
+        while not stop_event.set:
+            try:
+                return minerva_instance.connect(user=user)
+            except Exception as exc:
+                logging.error(exc)
+                stop_event.wait(1.0)
+
+    with closing(connect()) as conn:
         pid = os.getpid()
 
         queue = Queue.Queue()
