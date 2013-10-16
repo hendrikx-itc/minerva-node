@@ -43,9 +43,9 @@ from minerva.util import each, iter_queue, make_tuple, compose, \
     no_op, after, retry_while
 from minerva.util.config import parse_size, load_config, get_defaults, \
     ConfigError
-from minerva.db import connect, extract_safe_url
 from minerva.db.util import stored_procedure
 from minerva.system.jobqueue import enqueue_job
+from minerva.instance import MinervaInstance
 
 from minerva_dispatcher import __version__ as version, setup_notifier, \
     JOB_TYPE, get_job_sources
@@ -68,6 +68,9 @@ def main():
     """
     Script entry point
     """
+    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
+                                              "default")
+
     config_file_path = os.path.join("/etc/minerva", config_file)
 
     parser = argparse.ArgumentParser(
@@ -76,6 +79,12 @@ def main():
     parser.add_argument(
         "--version", action="version", version='%(prog)s {}'.format(version),
         help="display version information and exit")
+
+    parser.add_argument(
+        "-i", "--instance", default=default_minerva_instance,
+        help="name of the target minerva instance")
+
+    parser.add_argument("-u", "--user", help="user to connect to database")
 
     parser.add_argument(
         "-c", "--configfile", dest="configfile",
@@ -87,6 +96,8 @@ def main():
         help="generate base config file")
 
     args = parser.parse_args()
+
+    minerva_instance = MinervaInstance.load(args.instance)
 
     try:
         config = load_config(get_defaults(package_name, config_file),
@@ -109,13 +120,9 @@ def main():
         print(exc)
         return 1
 
-    db_url = config["db_url"]
+    user = args.user or "minerva_admin"
 
-    with closing(connect(db_url)) as conn:
-        safe_url = extract_safe_url(db_url)
-
-        logging.info("connected to Minerva database {0}".format(safe_url))
-
+    with closing(minerva_instance.connect(user=user)) as conn:
         pid = os.getpid()
 
         queue = Queue.Queue()
