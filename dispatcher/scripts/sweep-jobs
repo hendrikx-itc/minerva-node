@@ -18,83 +18,77 @@ import sys
 import datetime
 import argparse
 import logging.handlers
-from logging.handlers import RotatingFileHandler
 import re
-import StringIO
 from contextlib import closing
-from functools import partial
-import traceback
 import json
-from operator import not_
 
-import psycopg2.extensions
-from configobj import ConfigObj
-
-# pylint: disable-msg=E0611
-from minerva.util import parse_size, each, iter_queue, make_tuple, compose, \
-        no_op, after, retry_while, first
+from minerva.util import first
 from minerva.util.config import load_config, get_defaults, ConfigError
-from minerva.db import connect, extract_safe_url
-from minerva.db.util import stored_procedure
-from minerva.system import helpers as system_helpers
 from minerva.system.jobqueue import enqueue_job
+from minerva.instance import MinervaInstance
 
-from minerva_dispatcher import __version__ as version, setup_notifier, JOB_TYPE, \
-        get_job_sources
+from minerva_dispatcher import version, JOB_TYPE, get_job_sources
 
-DELAY = 1800 # seconds
+DELAY = 1800  # seconds
 
 package_name = "minerva_dispatcher"
 script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
 
+
 def main():
     """
     Script entry point
     """
+    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
+                                              "default")
+
     config_file_path = os.path.join("/etc/minerva", config_file)
 
     parser = argparse.ArgumentParser(
         description="sweep job sources for existing files/jobs")
 
-    parser.add_argument("--version", dest="show_version", default=False,
-        action="store_true", help="display version information and exit")
+    parser.add_argument(
+        "-v", "--version", action="version",
+        version="%(prog)s {}".format(version.__version__))
 
-    parser.add_argument("-c", "--configfile", dest="configfile",
+    parser.add_argument(
+        "-i", "--instance", default=default_minerva_instance,
+        help="name of the target minerva instance")
+
+    parser.add_argument("-u", "--user", help="user to connect to database")
+
+    parser.add_argument(
+        "-c", "--configfile", dest="configfile",
         default=config_file_path, help="the path to the config file")
 
-    parser.add_argument("--when-queue-empty", action="store_true",
+    parser.add_argument(
+        "--when-queue-empty", action="store_true",
         help="only run when the job queue is empty")
 
-    parser.add_argument("--generate-configfile", dest="generate_configfile",
-        action=GenerateConfigFileAction, nargs=0, help="generate base config file")
+    parser.add_argument(
+        "--generate-configfile", dest="generate_configfile",
+        action=GenerateConfigFileAction, nargs=0,
+        help="generate base config file")
 
     args = parser.parse_args()
+
+    minerva_instance = MinervaInstance.load(args.instance)
 
     if args.show_version:
         print("Minerva Job Sweeper {0}".format(version))
         return
 
     try:
-        config = load_config(get_defaults(package_name, config_file), args.configfile)
+        config = load_config(get_defaults(package_name, config_file),
+                             args.configfile)
     except ConfigError as exc:
         print("error loading configuration: {}".format(exc))
         return 1
 
-    try:
-        setup_logging(config["log_directory"], config["log_filename"],
-            config["log_rotation_size"], config["log_level"])
-    except IOError as exc:
-        print(exc)
-        return 1
+    user = args.user or config["database"]["user"] or "minerva_admin"
 
-    db_url = config["db_url"]
-
-    with closing(connect(db_url)) as conn:
-        safe_url = extract_safe_url(db_url)
-
-        logging.info("connected to Minerva database {0}".format(safe_url))
-
+    with closing(minerva_instance.connect(user=user)) as conn:
         with closing(conn.cursor()) as cursor:
             job_sources = get_job_sources(cursor, JOB_TYPE)
 
@@ -133,10 +127,10 @@ def sweep(job_sources):
 
         if recursive:
             paths = (os.path.join(root, f) for root, _, files in os.walk(uri)
-                    for f in files if regex.match(f))
+                     for f in files if regex.match(f))
         else:
             paths = (os.path.join(uri, f) for f in os.listdir(uri) if
-                    os.path.isfile(f) and regex.match(f))
+                     os.path.isfile(f) and regex.match(f))
 
         def is_old(path):
             delay_delta = datetime.timedelta(seconds=DELAY)
@@ -166,36 +160,12 @@ def process(conn, job_source_id, job_description):
         logging.info("could not get size of file: {}".format(exc))
         return
 
-    enqueue_job(conn, JOB_TYPE, json.dumps(job_description), filesize, job_source_id)
+    enqueue_job(conn, JOB_TYPE, json.dumps(job_description), filesize,
+                job_source_id)
 
     conn.commit()
 
     logging.info("enqueued {}".format(path))
-
-
-def setup_logging(directory, filename, rotation_size, level):
-    """
-    Setup logging with rotating log files.
-    """
-    level_map = {
-        "DEBUG": logging.DEBUG,
-        "INFO": logging.INFO,
-        "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL}
-
-    max_log_size = parse_size(rotation_size)
-
-    filepath = os.path.join(directory, filename)
-    handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
-    handler.setLevel(level_map[level])
-
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    handler.setFormatter(formatter)
-
-    rootlogger = logging.getLogger("")
-    rootlogger.setLevel(level_map[level])
-    rootlogger.addHandler(handler)
 
 
 class GenerateConfigFileAction(argparse.Action):
