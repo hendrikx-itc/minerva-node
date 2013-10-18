@@ -71,7 +71,14 @@ def main():
         action=GenerateConfigFileAction, nargs=0,
         help="generate base config file")
 
+    parser.add_argument(
+        "--verbose", action="store_true", default=False,
+        help="show verbose output")
+
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.root.setLevel(logging.INFO)
 
     minerva_instance = MinervaInstance.load(args.instance)
 
