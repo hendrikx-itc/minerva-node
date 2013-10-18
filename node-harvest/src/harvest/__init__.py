@@ -20,7 +20,7 @@ from minerva.util import compose
 from minerva.directory.helpers import get_datasource, NoSuchDataSourceError
 from minerva.directory.distinguishedname import explode
 
-from minerva.node.error import JobError
+from minerva_node.error import JobError
 
 from harvest.plugins import ENTRYPOINT, load_plugins
 from harvest.existence import Existence
@@ -45,7 +45,7 @@ class HarvestPlugin(object):
     def create_job(self, id, description, config):
         """
         A job description is a dictionary in the following form:
-        
+
             {
                 "datatype": "pm_3gpp",
                 "on_failure": {
