@@ -75,10 +75,6 @@ def main():
 
     minerva_instance = MinervaInstance.load(args.instance)
 
-    if args.show_version:
-        print("Minerva Job Sweeper {0}".format(version))
-        return
-
     try:
         config = load_config(get_defaults(package_name, config_file),
                              args.configfile)
