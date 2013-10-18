@@ -27,16 +27,16 @@ import traceback
 from operator import not_
 from contextlib import closing
 
-import pkg_resources
 import psycopg2
 
 from minerva.util import iter_queue, after, each, compose, retry_while
-from minerva.db import connect, extract_safe_url, OperationalError
+from minerva.db import OperationalError
 from minerva.system import jobqueue
+from minerva.instance import MinervaInstance
 
 from minerva_node.plugins import load_plugins
 from minerva_node.error import NodeError, JobError
-from minerva_node import Job, MinervaContext, log, version, config
+from minerva_node import Job, MinervaContext, log, version
 from minerva_node.config import load_config, get_defaults, ConfigError
 
 
@@ -59,23 +59,39 @@ def main():
     """
     Script entry point
     """
+    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
+                                              "default")
+
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-c", "--configfile", dest="configfile",
+    parser.add_argument(
+        "-c", "--configfile", dest="configfile",
         default="/etc/minerva/node.conf", help="the path to the config file")
 
-    parser.add_argument("--list-plugins", action=ListPluginsAction,
+    parser.add_argument(
+        "-i", "--instance", default=default_minerva_instance,
+        help="name of the target minerva instance")
+
+    parser.add_argument("-u", "--user", help="user to connect to database")
+
+    parser.add_argument(
+        "--list-plugins", action=ListPluginsAction,
         nargs=0, help="list installed plugins")
 
-    parser.add_argument("--generate-configfile", action=GenerateConfigFileAction,
+    parser.add_argument(
+        "--generate-configfile", action=GenerateConfigFileAction,
         nargs=0, help="generate base config file")
 
-    parser.add_argument("--slot", dest="slot", default=1, type=int, help="node slot number")
+    parser.add_argument(
+        "--slot", dest="slot", default=1, type=int, help="node slot number")
 
-    parser.add_argument("-v", "--version", action="version",
+    parser.add_argument(
+        "-v", "--version", action="version",
         version="%(prog)s {}".format(version.__version__))
 
     args = parser.parse_args()
+
+    minerva_instance = MinervaInstance.load(args.instance)
 
     try:
         config = load_config(get_defaults("node.conf"), args.configfile)
@@ -83,12 +99,7 @@ def main():
         print("error loading configuration: {}".format(exc))
         return 1
 
-    session_queries = ["SET application_name = 'node:process'"]
-
     stop_event = threading.Event()
-
-    def log_signal(signum, _frame):
-        logging.info("received {0!s} signal".format(SIGNAL_MAP.get(signum, signum)))
 
     stop_node = after(stop_event.set, log_signal)
 
@@ -98,28 +109,28 @@ def main():
 
     log_filename = "node_{0:d}.log".format(args.slot)
 
-    log.setup_logging(config["log_directory"], log_filename,
-        config["log_rotation_size"], config["log_level"])
+    log.setup_logging(
+        config["log_directory"], log_filename, config["log_rotation_size"],
+        config["log_level"])
 
-    create_writer_connection = partial(connect, config["writer_db_url"], setsession=session_queries)
-    create_reader_connection = partial(connect, config["reader_db_url"], setsession=session_queries)
+    user = args.user or config["database"]["user"] or "minerva_admin"
+
+    create_writer_connection = partial(minerva_instance.connect, user=user)
+    create_reader_connection = partial(minerva_instance.connect_ro, user=user)
 
     handler_map = {
-        OperationalError: partial(logging.error, "could not connect to database, waiting")
-        }
+        OperationalError: partial(logging.error,
+                                  "could not connect to database, waiting")
+    }
 
     retry_condition = compose(not_, stop_event.is_set)
 
-    writer_conn = retry_while(create_writer_connection, handler_map, retry_condition)
-    reader_conn = retry_while(create_reader_connection, handler_map, retry_condition)
+    writer_conn = retry_while(create_writer_connection, handler_map,
+                              retry_condition)
+    reader_conn = retry_while(create_reader_connection, handler_map,
+                              retry_condition)
 
     if writer_conn and reader_conn:
-        safe_writer_url = extract_safe_url(config["writer_db_url"])
-        logging.info("connected to Minerva database {0} for writing".format(safe_writer_url))
-
-        safe_reader_url = extract_safe_url(config["reader_db_url"])
-        logging.info("connected to Minerva database {0} for reading".format(safe_reader_url))
-
         minerva_context = MinervaContext(writer_conn, reader_conn)
 
         node = setup_node(stop_event, minerva_context)
@@ -134,6 +145,11 @@ def main():
     logging.info("stopped")
 
 
+def log_signal(signum, _frame):
+    logging.info("received {0!s} signal".format(
+        SIGNAL_MAP.get(signum, signum)))
+
+
 def setup_node(stop_event, minerva_context):
     plugins = load_plugins()
 
@@ -142,7 +158,9 @@ def setup_node(stop_event, minerva_context):
 
     plugin_dict = dict((p.name, p(minerva_context)) for p in plugins)
 
-    job_producer = iter_queue(stop_event, partial(get_job, minerva_context.writer_conn), jobqueue.NoJobAvailable, NOJOB_TIMEOUT)
+    job_producer = iter_queue(
+        stop_event, partial(get_job, minerva_context.writer_conn),
+        jobqueue.NoJobAvailable, NOJOB_TIMEOUT)
 
     jobs = imap(partial(create_job, plugin_dict), job_producer)
 
