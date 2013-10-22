@@ -54,7 +54,7 @@ def main():
         return 0
 
     if args.timestamp and args.timestamp.lower() == "now":
-        timestamp = datetime.strftime(datetime.now(), args.timestamp_format)
+        timestamp = datetime.now().strftime(args.timestamp_format)
     else:
         timestamp = args.timestamp
 
@@ -153,7 +153,7 @@ def create_argument_parser():
         help="regular expression for timestamp extraction from filename")
 
     parser.add_argument(
-        "--timestamp-format", default="%%Y%%m%%d_%%H%%M",
+        "--timestamp-format", default="%Y%m%d_%H%M",
         help="format of date: default: %%Y%%m%%d_%%H%%M")
 
     parser.add_argument(

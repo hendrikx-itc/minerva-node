@@ -16,9 +16,21 @@ import pkg_resources
 
 ENTRYPOINT = "harvester.plugins"
 
+
+def iter_entry_points():
+    return pkg_resources.iter_entry_points(group=ENTRYPOINT)
+
+
 def load_plugins():
     """
     Load and return a dictionary with plugins by their names.
     """
-    return dict((entrypoint.name, entrypoint.load()())
-        for entrypoint in pkg_resources.iter_entry_points(group=ENTRYPOINT))
+    return dict(
+        (entrypoint.name, entrypoint.load()())
+        for entrypoint in iter_entry_points())
+
+
+def get_plugin(name):
+    return next(entrypoint.load()()
+                for entrypoint in iter_entry_points()
+                if entrypoint.name == name)
