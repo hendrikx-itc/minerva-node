@@ -63,13 +63,20 @@ def main():
                                  handle_package)
 
     if args.store:
+        minerva_instance = MinervaInstance.load(args.instance_name)
+
+        logging.debug("Minerva instance: {}".format(minerva_instance))
+
         user = (
             args.user
             or args.config.get("database", {}).get("user")
             or "minerva_admin"
         )
 
-        storage_provider = partial(store_database, args.minerva_instance, user,
+        logging.debug("database user: {}".format(user))
+        logging.debug("storage type: {}".format(args.plugin.storagetype()))
+
+        storage_provider = partial(store_database, minerva_instance, user,
                                    args.plugin.storagetype(),
                                    args.datasource)
     else:
@@ -102,9 +109,11 @@ def create_argparser():
         "file_path", nargs="*",
         help="path of file that will be processed")
 
+    instance_name = os.environ.get("DEFAULT_MINERVA_INSTANCE") or 'default'
+
     parser.add_argument(
-        "-i", "--instance", action=_LoadMinervaInstance,
-        dest="minerva_instance", help="name of the minerva instance")
+        "-i", "--instance", dest="instance_name", default=instance_name,
+        help="name of the minerva instance")
 
     parser.add_argument("-u", "--user", help="user to connect to database")
 
@@ -303,23 +312,6 @@ class _LoadHarvestPlugin(argparse.Action):
             sys.exit(1)
 
         setattr(namespace, self.dest, plugin)
-
-
-class _LoadMinervaInstance(argparse.Action):
-    def __init__(self, option_strings, dest=argparse.SUPPRESS,
-                 default=argparse.SUPPRESS, help=None):
-        super(_LoadMinervaInstance, self).__init__(
-            option_strings=option_strings, dest=dest, default=default,
-            nargs=1, help=help)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        default_instance_name = os.environ.get("DEFAULT_MINERVA_INSTANCE")
-
-        instance_name = values[0] or default_instance_name or self.default
-
-        minerva_instance = MinervaInstance.load(instance_name)
-
-        setattr(namespace, self.dest, minerva_instance)
 
 
 @contextmanager
