@@ -10,21 +10,16 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 
+
 class HarvestPlugin(object):
-    def api_versions(self):
-        """
-        Sub classes should return a list with supported API versions
-        """
-        raise NotImplemented()
+    @staticmethod
+    def storagetype():
+        """Return the required storage type for the plugin."""
+        raise NotImplementedError()
 
-    def parser(self):
+    @staticmethod
+    def create_parser(rawdatapackage_handler, config):
         """
-        Version 4
+        Create and return new parser instance.
         """
-        raise NotImplemented()
-
-    def create_parser(self):
-        """
-        Version 4
-        """
-        raise NotImplemented()
+        raise NotImplementedError()
