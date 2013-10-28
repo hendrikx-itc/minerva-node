@@ -117,6 +117,7 @@ def get_queue_size(cursor):
 
 def sweep(job_sources):
     for job_source_id, name, job_type, config in job_sources:
+        logging.info("checking job source {}".format(name))
         config_parsed = json.loads(config)
 
         match_pattern = config_parsed["match_pattern"]
