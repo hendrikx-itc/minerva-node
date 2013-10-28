@@ -1,0 +1,10 @@
+*/build/*
+*.egg-info/
+*/debian/changelog
+*/debian/files
+importer-csv/debian/minerva-csv-importer*
+materialize/metrics/debian/minerva-materialize-metrics*
+materialize/schema/debian/minerva-materialize-schema*
+node-dummy/debian/python-minerva-node-dummy*
+node-materialize/debian/python-minerva-node-materialize*
+transform/metrics/debian/minerva-transform-metrics*
