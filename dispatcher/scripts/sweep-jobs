@@ -21,6 +21,7 @@ import logging.handlers
 import re
 from contextlib import closing
 import json
+from functools import partial
 
 from minerva.util import first
 from minerva.util.config import load_config, get_defaults, ConfigError
@@ -144,8 +145,14 @@ def sweep(job_sources):
             paths = (os.path.join(root, f) for root, _, files in os.walk(uri)
                      for f in files if regex.match(f))
         else:
-            paths = (os.path.join(uri, f) for f in os.listdir(uri) if
-                     os.path.isfile(f) and regex.match(f))
+            make_full_path = partial(os.path.join, uri)
+
+            all_file_paths = map(make_full_path, os.listdir(uri))
+
+            def file_matches(f):
+                return os.path.isfile(f) and regex.match(f)
+
+            paths = filter(file_matches, all_file_paths)
 
         def is_old(path):
             delay_delta = datetime.timedelta(seconds=DELAY)
