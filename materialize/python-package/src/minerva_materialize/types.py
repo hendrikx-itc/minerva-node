@@ -10,9 +10,9 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import psycopg2
-from minerva.db.error import translate_postgresql_exception
 
-from minerva_storage_trend.trendstore import TrendStore
+from minerva.db.error import translate_postgresql_exception
+from minerva.storage.trend.trendstore import TrendStore
 
 
 class Materialization(object):
