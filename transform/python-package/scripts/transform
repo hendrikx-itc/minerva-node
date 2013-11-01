@@ -21,9 +21,10 @@ import psycopg2.extras
 from minerva.db import parse_db_url
 from minerva.db.query import Table
 from minerva.util import attrchecker, matches
-from minerva.util.config import parse_size, load_config, get_defaults, ConfigError
+from minerva.util.config import parse_size, load_config, get_defaults, \
+    ConfigError
 
-from minerva_storage_trend.granularity import create_granularity
+from minerva.storage.trend.granularity import create_granularity
 
 from minerva_transform import __version__ as version, SCHEMA, MinervaContext
 from minerva_transform.types import Transformation, render_function_set_table

@@ -21,14 +21,12 @@ from minerva.db.query import Table, Column
 from minerva.directory.helpers_v4 import get_entitytype, get_datasource, \
         create_entitytype, get_entity, create_entity, none_or, \
         get_entitytype_by_id, get_datasource, create_datasource
-
 from minerva.directory.basetypes import DataSource, Entity, EntityType
 import minerva.system.helpers as system_helpers
 from minerva.util import first, identity
 from minerva.util.debug import log_call, log_call_basic
 from minerva.util.tabulate import render_table
-
-from minerva_storage_trend import schema as trend_schema
+from minerva.storage.trend import schema as trend_schema
 
 
 from minerva_transform import helpers

@@ -30,9 +30,9 @@ from minerva_db import reset_db, with_connection, \
 
 from util import render_datapackage
 
-from minerva_storage_trend.store import CopyFrom
-from minerva_storage_trend.types_v4 import DataPackage, TrendStore3
-from minerva_storage_trend.granularity import create_granularity
+from minerva.storage.trend.store import CopyFrom
+from minerva.storage.trend.types_v4 import DataPackage, TrendStore3
+from minerva.storage.trend.granularity import create_granularity
 
 
 tzinfo = pytz.timezone(TIMEZONE)

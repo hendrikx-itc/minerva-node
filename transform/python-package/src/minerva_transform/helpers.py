@@ -12,20 +12,19 @@ this software.
 import logging
 from functools import partial
 from contextlib import closing
-import itertools
 from datetime import timedelta
-from operator import itemgetter, attrgetter, truth
+from operator import truth
 
 from minerva.util import head, compose
 from minerva.storage import get_plugin
-from minerva.db.query import Table, Column, Literal, Argument, As, Select, \
-        ands, ors, And, Eq, Gt, LtEq, GtEq, extract_tables, smart_quote, Call, \
-        Function, Or, Value
-from minerva.directory.helpers_v4 import get_datasource_by_id, get_entitytype_by_id
-from minerva_storage_trend.granularity import create_granularity
-from minerva_storage_trend.helpers import get_table_names
-from minerva_storage_trend.trendstore import TrendStore
-from minerva_storage_trend.tables import PARTITION_SIZES
+from minerva.db.query import Table, Column, Call, \
+    Function, Value
+from minerva.directory.helpers_v4 import get_datasource_by_id, \
+    get_entitytype_by_id
+from minerva.storage.trend.granularity import create_granularity
+from minerva.storage.trend.helpers import get_table_names
+from minerva.storage.trend.trendstore import TrendStore
+from minerva.storage.trend.tables import PARTITION_SIZES
 
 from minerva_transform.types import FunctionSet, FunctionMapping
 

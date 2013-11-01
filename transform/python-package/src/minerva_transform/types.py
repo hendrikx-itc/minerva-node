@@ -9,36 +9,30 @@ the Free Software Foundation; either version 3, or (at your option) any later
 version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
+import logging
+from contextlib import closing
+import itertools
+from datetime import timedelta
+from operator import itemgetter, attrgetter, truth
 from functools import partial
 from itertools import repeat
-import logging
 
 from minerva import storage
 from minerva.util import zipapply
 from minerva.util import head, compose
 from minerva.util.tabulate import render_table
-from minerva.directory.helpers_v4 import get_datasource_by_id, get_entitytype_by_id
-
-from minerva_storage_trend.granularity import create_granularity
-
-from minerva.storage import get_plugin
-import logging
-from functools import partial
-from contextlib import closing
-import itertools
-from datetime import timedelta
-from operator import itemgetter, attrgetter, truth
-
+from minerva.directory.helpers_v4 import get_datasource_by_id, \
+    get_entitytype_by_id
+from minerva.storage.trend.granularity import create_granularity
+from minerva.storage.trend.helpers import get_table_names
+from minerva.storage.trend.tables import PARTITION_SIZES
 from minerva.storage import get_plugin
 from minerva.db.dbtransaction import DbAction
 from minerva.db.query import Table, Column, Literal, Argument, As, Select, \
-        ands, ors, And, Eq, Gt, LtEq, GtEq, extract_tables, smart_quote, Call, \
-        Function, Or, Value
-from minerva.directory.helpers_v4 import get_datasource_by_id, get_entitytype_by_id
-from minerva_storage_trend.granularity import create_granularity
-from minerva_storage_trend.helpers import get_table_names
-from minerva_storage_trend.trendstore import TrendStore
-from minerva_storage_trend.tables import PARTITION_SIZES
+    ands, ors, And, Eq, Gt, LtEq, GtEq, extract_tables, smart_quote, Call, \
+    Function, Or, Value
+from minerva.directory.helpers_v4 import get_datasource_by_id, \
+    get_entitytype_by_id
 
 
 SCHEMA = "transform"

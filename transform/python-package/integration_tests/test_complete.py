@@ -22,15 +22,14 @@ from minerva.util import first, unlines, k
 from minerva.db.query import Table, Column, \
     Eq, Call
 from minerva.db.dbtransaction import DbTransaction, UpdateState
-
 from minerva.node import MinervaContext
-from minerva_storage_trend.granularity import create_granularity
-from minerva_storage_trend.types_v4 import DataPackage, TrendStore3
-from minerva_storage_trend.store import CopyFrom
+from minerva.storage.trend.granularity import create_granularity
+from minerva.storage.trend.datapackage import DataPackage
+from minerva.storage.trend.trendstore import TrendStore, CopyFrom
 
 from minerva_db import reset_db, with_connection, \
-        get_dummy_datasource, get_dummy_entitytype, TIMEZONE, add_function_set, \
-        add_function_mapping, render_result, get_or_create_entity
+    get_dummy_datasource, get_dummy_entitytype, TIMEZONE, add_function_set, \
+    add_function_mapping, render_result, get_or_create_entity
 
 from minerva_transform.types import Transformation
 from util import render_datapackage
@@ -46,6 +45,7 @@ modified_b = tzinfo.localize(datetime(2012, 12, 11, 14, 7, 14))
 dummy_type_name = "dummy_type_standard"
 
 dns = ["{}=dummy_{}".format(dummy_type_name, i) for i in range(1000, 1009)]
+
 
 def create_source_1(granularity, entities):
     trend_names = "counter_a", "counter_b"
@@ -114,14 +114,17 @@ def test_run(conn):
 
         partition_size = 86400
 
-        trendstore_1 = TrendStore3(source_datasource_1, entitytype,
-                source_granularity, partition_size, "table")
+        trendstore_1 = TrendStore(
+            source_datasource_1, entitytype, source_granularity,
+            partition_size, "table")
         trendstore_1.create(cursor)
-        trendstore_2 = TrendStore3(source_datasource_2, entitytype,
-                source_granularity, partition_size, "table")
+        trendstore_2 = TrendStore(
+            source_datasource_2, entitytype, source_granularity,
+            partition_size, "table")
         trendstore_2.create(cursor)
-        result_trendstore = TrendStore3(dest_datasource, entitytype,
-                dest_granularity, partition_size, "table")
+        result_trendstore = TrendStore(
+            dest_datasource, entitytype, dest_granularity, partition_size,
+            "table")
         result_trendstore.create(cursor)
 
         function_mappings = [
