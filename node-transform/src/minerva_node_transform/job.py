@@ -19,9 +19,9 @@ from dateutil import parser as datetime_parser
 
 from minerva.storage import get_plugin
 
-from minerva.node.error import JobError, JobDescriptionError, JobExecutionError
-from minerva.transform.helpers import get_function_set, NoSuchFunctionSetError
-from minerva.transform.types import Transformation
+from minerva_node.error import JobError, JobDescriptionError, JobExecutionError
+from minerva_transform.helpers import get_function_set, NoSuchFunctionSetError
+from minerva_transform.types import Transformation
 
 
 class TransformJob(object):

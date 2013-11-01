@@ -4,7 +4,7 @@ from nose.tools import eq_, raises, assert_not_equal, assert_raises, with_setup
 
 from minerva.util import first
 
-from minerva.node import MinervaContext
+from minerva_node import MinervaContext
 
 
 ENTRYPOINT = "node.plugins"

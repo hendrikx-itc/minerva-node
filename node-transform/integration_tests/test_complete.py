@@ -12,7 +12,7 @@ from minerva.storage import get_plugin
 from minerva.db.query import Table, Column, Insert, Truncate, Select, Value, Eq, \
         Argument, And, table_exists, SqlType, Call
 
-from minerva.node import MinervaContext
+from minerva_node import MinervaContext
 
 from minerva_db import connect, clear_database, get_tables, with_connection, \
         get_dummy_datasource, get_dummy_entitytype, TIMEZONE, get_function_set, \
