@@ -19,8 +19,8 @@ from dateutil import parser as datetime_parser
 
 from minerva.storage import get_plugin
 
-from minerva.node.error import JobError, JobDescriptionError, JobExecutionError
-from minerva.materialize.types import Materialization
+from minerva_node.error import JobError, JobDescriptionError, JobExecutionError
+from minerva_materialize.types import Materialization
 
 
 class MaterializeJob(object):
