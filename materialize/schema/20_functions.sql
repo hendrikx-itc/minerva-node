@@ -83,6 +83,51 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE TYPE materialization_result AS (processed_max_modified timestamp with time zone, row_count integer);
 
 
+CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
+	RETURNS void
+AS $$
+	SELECT trend.add_trend_to_trendstore(trendstore, name, datatype)
+	FROM trend.table_columns('trend', trend.to_base_table_name($1)), trend.trendstore
+	WHERE name NOT IN (
+		SELECT name FROM trend.table_columns('trend', trend.to_base_table_name($2))
+	) AND trendstore.id = $2.id;
+$$ LANGUAGE SQL VOLATILE;
+
+COMMENT ON FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
+IS 'Add trends and actual table columns to destination that exist in the source
+trendstore but not yet in the destination.';
+
+
+CREATE OR REPLACE FUNCTION add_missing_trends(materialization.type)
+	RETURNS void
+AS $$
+	SELECT materialization.add_missing_trends(src, dst)
+	FROM trend.trendstore src, trend.trendstore dst
+	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION modify_mismatching_trends(src trend.trendstore, dst trend.trendstore)
+	RETURNS void
+AS $$
+	SELECT trend.modify_trendstore_columns($2.id, array_agg(src_column))
+	FROM trend.table_columns('trend', trend.to_base_table_name($1)) src_column
+	JOIN trend.table_columns('trend', trend.to_base_table_name($2)) dst_column ON
+		src_column.name = dst_column.name
+			AND
+		src_column.datatype <> dst_column.datatype;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION modify_mismatching_trends(materialization.type)
+	RETURNS void
+AS $$
+	SELECT materialization.modify_mismatching_trends(src, dst)
+	FROM trend.trendstore src, trend.trendstore dst
+	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+$$ LANGUAGE SQL VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION materialize(src trend.trendstore, dst trend.trendstore, "timestamp" timestamp with time zone)
 	RETURNS materialization_result
 AS $$
@@ -106,22 +151,8 @@ BEGIN
 	table_name = trend.to_base_table_name(src);
 	dst_table_name = trend.to_base_table_name(dst);
 
-	PERFORM trend.add_trend_to_trendstore(trendstore, col.name, col.datatype)
-	FROM
-	(
-		SELECT name, datatype
-		FROM trend.table_columns('trend', table_name)
-		WHERE name NOT IN (SELECT name FROM trend.table_columns('trend', dst_table_name))
-	) AS col,
-	trend.trendstore
-	WHERE trendstore.id = dst.id;
-
-	PERFORM trend.modify_trendstore_columns(dst.id, array_agg(src_column))
-	FROM trend.table_columns('trend', table_name) src_column
-	JOIN trend.table_columns('trend', dst_table_name) dst_column ON
-		src_column.name = dst_column.name
-			AND
-		src_column.datatype <> dst_column.datatype;
+	PERFORM add_missing_trends($1, $2);
+	PERFORM modify_mismatching_trends($1, $2);
 
 	dst_partition = trend.attributes_to_partition(dst, trend.timestamp_to_index(dst.partition_size, $3));
 	EXECUTE format('DELETE FROM trend.%I WHERE timestamp = %L', dst_partition.table_name, timestamp);
