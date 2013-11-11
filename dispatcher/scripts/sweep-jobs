@@ -41,9 +41,6 @@ def main():
     """
     Script entry point
     """
-    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
-                                              "default")
-
     config_file_path = os.path.join("/etc/minerva", config_file)
 
     parser = argparse.ArgumentParser(
@@ -54,8 +51,7 @@ def main():
         version="%(prog)s {}".format(version.__version__))
 
     parser.add_argument(
-        "-i", "--instance", default=default_minerva_instance,
-        help="name of the target minerva instance")
+        "-i", "--instance", help="name of the target minerva instance")
 
     parser.add_argument("-u", "--user", help="user to connect to database")
 
@@ -90,7 +86,13 @@ def main():
     if args.debug:
         logging.root.setLevel(logging.DEBUG)
 
-    minerva_instance = MinervaInstance.load(args.instance)
+    minerva_instance_name = (
+        args.instance or
+        os.environ.get("MINERVA_INSTANCE") or
+        "default"
+    )
+
+    minerva_instance = MinervaInstance.load(minerva_instance_name)
 
     try:
         config = load_config(get_defaults(package_name, config_file),
