@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Minerva Dispatcher command line script
+Minerva Dispatcher command line script.
 
 Dispatcher/harvest job sources look like this:
 
@@ -11,6 +11,7 @@ Dispatcher/harvest job sources look like this:
     "match_pattern": ".*",
     "job_config": {}
 }
+
 """
 __docformat__ = "restructuredtext en"
 
@@ -63,9 +64,7 @@ config_file = "{}.conf".format(script_name)
 
 
 def main():
-    """
-    Script entry point
-    """
+    """Script entry point."""
     config_file_path = os.path.join("/etc/minerva", config_file)
 
     parser = argparse.ArgumentParser(
@@ -200,9 +199,7 @@ def process(conn, stop_event, item):
 
 
 def setup_logging(directory, filename, rotation_size, level):
-    """
-    Setup logging with rotating log files.
-    """
+    """Setup logging with rotating log files."""
     level_map = {
         "DEBUG": logging.DEBUG,
         "INFO": logging.INFO,
