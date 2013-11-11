@@ -38,17 +38,15 @@ from operator import not_
 
 import psycopg2.extensions
 
-# pylint: disable-msg=E0611
 from minerva.util import each, iter_queue, make_tuple, compose, \
     no_op, after, retry_while
 from minerva.util.config import parse_size, load_config, get_defaults, \
     ConfigError
-from minerva.db.util import stored_procedure
 from minerva.system.jobqueue import enqueue_job
 from minerva.instance import MinervaInstance
 
 from minerva_dispatcher import __version__ as version, setup_notifier, \
-    JOB_TYPE, get_job_sources
+    get_job_sources
 
 TIMEOUT = 1.0
 
@@ -68,9 +66,6 @@ def main():
     """
     Script entry point
     """
-    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
-                                              "default")
-
     config_file_path = os.path.join("/etc/minerva", config_file)
 
     parser = argparse.ArgumentParser(
@@ -81,7 +76,7 @@ def main():
         help="display version information and exit")
 
     parser.add_argument(
-        "-i", "--instance", default=default_minerva_instance,
+        "-i", "--instance",
         help="name of the target minerva instance")
 
     parser.add_argument("-u", "--user", help="user to connect to database")
@@ -97,7 +92,13 @@ def main():
 
     args = parser.parse_args()
 
-    minerva_instance = MinervaInstance.load(args.instance)
+    minerva_instance_name = (
+        args.instance or
+        os.environ.get("MINERVA_INSTANCE") or
+        "default"
+    )
+
+    minerva_instance = MinervaInstance.load(minerva_instance_name)
 
     try:
         config = load_config(get_defaults(package_name, config_file),
@@ -131,8 +132,6 @@ def main():
                 stop_event.wait(1.0)
 
     with closing(connect()) as conn:
-        pid = os.getpid()
-
         queue = Queue.Queue()
 
         datasource_events = iter_queue(stop_event, queue.get_nowait,
@@ -149,14 +148,14 @@ def main():
         enqueue = compose(queue.put, make_tuple)
 
         with closing(conn.cursor()) as cursor:
-            job_sources = get_job_sources(cursor, JOB_TYPE)
+            job_sources = get_job_sources(cursor)
 
         conn.commit()
 
         notifier = setup_notifier(job_sources, enqueue)
         notifier.start()
 
-        logging.info("started with pid {0:d}".format(pid))
+        logging.info("started with pid {0:d}".format(os.getpid()))
 
         while not stop_event.is_set():
             stop_event.wait(1.0)
@@ -166,15 +165,6 @@ def main():
         conn.commit()
 
         logging.info("stopped")
-
-
-def get_script_name():
-    directory, filename = os.path.split(__file__)
-
-    return filename
-
-
-stop_process = partial(stored_procedure, "system.stop_process")
 
 
 def process(conn, stop_event, item):

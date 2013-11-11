@@ -12,88 +12,74 @@ this software.
 import os
 import logging
 import re
-import threading
-import Queue
-from functools import partial
-import json
-
-from version import __version__
 
 import pyinotify
 
-from minerva.util import compose
+from minerva_dispatcher.harvestjobsource import HarvestJobSource
+from minerva.util import expand_args, no_op
 
 JOB_TYPE = "harvest"
 
+EVENT_MASK = (
+    pyinotify.IN_MOVED_TO |
+    pyinotify.IN_CLOSE_WRITE |
+    pyinotify.IN_CREATE  # Needed for auto-watching created directories
+)
 
-def get_job_sources(cursor, job_type):
+
+def get_job_sources(cursor):
     query = (
         "SELECT id, name, job_type, config "
         "FROM system.job_source "
         "WHERE job_type = %s")
 
-    args = (job_type, )
+    args = (JOB_TYPE, )
 
     cursor.execute(query, args)
 
-    return cursor.fetchall()
+    return map(expand_args(HarvestJobSource), cursor.fetchall())
 
 
 def setup_notifier(job_sources, enqueue):
     watch_manager = pyinotify.WatchManager()
 
-    notifier = pyinotify.ThreadedNotifier(watch_manager)
+    for job_source in job_sources:
+        watch_source(watch_manager, enqueue, job_source)
 
-    mask = pyinotify.IN_MOVED_TO | pyinotify.IN_CLOSE_WRITE | pyinotify.IN_CREATE
-
-    for job_source_id, name, job_type, config in job_sources:
-        config_parsed = json.loads(config)
-
-        match_pattern = config_parsed["match_pattern"]
-
-        regex = re.compile(match_pattern)
-
-        job_config = config_parsed["job_config"]
-
-        make_job_description = job_description_creator(job_config)
-
-        enqueue_for_job_source = partial(enqueue, job_source_id)
-
-        enqueue_action = compose(enqueue_for_job_source, make_job_description)
-
-        handler_map = {
-            "IN_CLOSE_WRITE": partial(handle_event, regex.match, enqueue_action),
-            "IN_MOVED_TO": partial(handle_event, regex.match, enqueue_action)}
-
-        uri = config_parsed["uri"]
-        recursive = config_parsed["recursive"]
-
-        proc_fun = partial(event_handler, handler_map)
-
-        watch_manager.add_watch(uri, mask, proc_fun=proc_fun, rec=recursive,
-                auto_add=True)
-
-        logging.info("watching {} with filter {}".format(uri, match_pattern))
-
-    return notifier
+    return pyinotify.ThreadedNotifier(watch_manager)
 
 
-def job_description_creator(job_config):
-    def fn(path):
-        description = {"uri": path}
-        description.update(job_config)
-        return description
+def watch_source(watch_manager, enqueue, job_source):
+    match_pattern = job_source.config["match_pattern"]
 
-    return fn
+    regex = re.compile(match_pattern)
+
+    name_matches = regex.match
+
+    def event_matches(event):
+        return not event.dir and name_matches(event.name)
+
+    def handle_event(event):
+        if event_matches(event):
+            file_path = os.path.join(event.path, event.name)
+            enqueue(job_source.id, job_source.job_description(file_path))
+
+    proc_fun = event_handler({
+        "IN_CLOSE_WRITE": handle_event,
+        "IN_MOVED_TO": handle_event
+    })
+
+    uri = job_source.config["uri"]
+    recursive = job_source.config["recursive"]
+
+    watch_manager.add_watch(
+        uri, EVENT_MASK, proc_fun=proc_fun, rec=recursive, auto_add=True)
+
+    logging.info("watching {} with filter {}".format(uri, match_pattern))
 
 
-def handle_event(is_match, enqueue, event):
-    if not event.dir and is_match(event.name):
-        enqueue(os.path.join(event.path, event.name))
+def event_handler(handler_map, default_handler=no_op):
+    def f(event):
+        handler_map.get(event.maskname, default_handler)(event)
 
-
-def event_handler(handler_map, event):
-    handler = handler_map.get(event.maskname)
-
-    if handler:
-        handler(event)
+    return f
