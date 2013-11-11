@@ -15,8 +15,11 @@ import re
 
 import pyinotify
 
-from minerva_dispatcher.harvestjobsource import HarvestJobSource
 from minerva.util import expand_args, no_op
+
+from minerva_dispatcher.harvestjobsource import HarvestJobSource
+from minerva_dispatcher.error import ConfigError
+
 
 JOB_TYPE = "harvest"
 
@@ -28,6 +31,7 @@ EVENT_MASK = (
 
 
 def get_job_sources(cursor):
+    """Return list of HarvestJobSource instances."""
     query = (
         "SELECT id, name, job_type, config "
         "FROM system.job_source "
@@ -41,18 +45,34 @@ def get_job_sources(cursor):
 
 
 def setup_notifier(job_sources, enqueue):
+    """Setup and return ThreadedNotifier watching the job sources."""
     watch_manager = pyinotify.WatchManager()
 
     for job_source in job_sources:
-        watch_source(watch_manager, enqueue, job_source)
+        try:
+            watch_source(watch_manager, enqueue, job_source)
+        except ConfigError as exc:
+            logging.error(exc)
 
     return pyinotify.ThreadedNotifier(watch_manager)
 
 
 def watch_source(watch_manager, enqueue, job_source):
+    """Add a watch for the job source to watch_manager and return None."""
     match_pattern = job_source.config["match_pattern"]
 
-    regex = re.compile(match_pattern)
+    try:
+        regex = re.compile(match_pattern)
+    except re.error as exc:
+        raise ConfigError(
+            "invalid match_expression '{}': {}".format(match_pattern, exc))
+
+    uri = job_source.config["uri"]
+
+    try:
+        os.stat(uri)
+    except OSError as exc:
+        raise ConfigError("error watching directory {}: {}".format(uri, exc))
 
     name_matches = regex.match
 
@@ -69,7 +89,6 @@ def watch_source(watch_manager, enqueue, job_source):
         "IN_MOVED_TO": handle_event
     })
 
-    uri = job_source.config["uri"]
     recursive = job_source.config["recursive"]
 
     watch_manager.add_watch(
@@ -79,6 +98,7 @@ def watch_source(watch_manager, enqueue, job_source):
 
 
 def event_handler(handler_map, default_handler=no_op):
+    """Return a function that handles events based on their type."""
     def f(event):
         handler_map.get(event.maskname, default_handler)(event)
 
