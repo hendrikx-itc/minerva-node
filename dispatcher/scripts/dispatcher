@@ -45,8 +45,8 @@ from minerva.util.config import parse_size, load_config, get_defaults, \
 from minerva.system.jobqueue import enqueue_job
 from minerva.instance import MinervaInstance
 
-from minerva_dispatcher import __version__ as version, setup_notifier, \
-    get_job_sources
+from minerva_dispatcher.version import __version__ as version
+from minerva_dispatcher import setup_notifier, get_job_sources, JOB_TYPE
 
 TIMEOUT = 1.0
 
