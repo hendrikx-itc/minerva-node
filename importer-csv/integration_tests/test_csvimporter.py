@@ -1,10 +1,6 @@
-import os
-import time
-import logging
 from contextlib import closing
 import StringIO
 
-from nose.tools import eq_
 from minerva_csvimporter import import_csv
 
 from minerva_db import connect
@@ -16,9 +12,14 @@ def test_timestamp_source_data():
     try:
         # make sure entitytype is known
         with closing(conn.cursor()) as cursor:
-            cursor.execute("INSERT INTO directory.entitytype (name, description) VALUES ('integration_test_entity', 'test')")
+            cursor.execute(
+                "INSERT INTO directory.entitytype (name, description) "
+                "VALUES ('integration_test_entity', 'test')")
 
-        readfile = StringIO.StringIO('CIC;CCR;Drops;t_source\n10023;0.9919;17;20111111_0000\n10047;0.9963;18;20101010_0000\n')
+        readfile = StringIO.StringIO(
+            'CIC;CCR;Drops;t_source\n'
+            '10023;0.9919;17;20111111_0000\n'
+            '10047;0.9963;18;20101010_0000\n')
 
         profile = {
             "granularity": 86400,
@@ -45,6 +46,6 @@ def test_timestamp_source_data():
 
     finally:
         with closing(conn.cursor()) as cursor:
-            cursor.execute("DELETE FROM directory.entitytype WHERE name = 'integration_test_entity'")
+            cursor.execute("DELETE FROM directory.entitytype")
         conn.commit()
         conn.close()

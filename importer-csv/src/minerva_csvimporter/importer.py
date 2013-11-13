@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Provides main csv importing function `import_csv`."""
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
@@ -23,19 +24,24 @@ import pytz
 
 from minerva.util import compose, identity, k
 from minerva.storage import get_plugin
-from minerva.directory.helpers import get_entitytype, \
-    create_entitytype, NoSuchEntityTypeError, NoSuitablePluginError
-from minerva.directory.helpers_v4 import name_to_datasource
+from minerva.directory.helpers import NoSuitablePluginError
+from minerva.directory.helpers_v4 import name_to_datasource, name_to_entitytype
 from minerva.directory.distinguishedname import explode
 
 from minerva_csvimporter import dialects
 
 
 class DataError(Exception):
+
+    """Indicating errors in the data."""
+
     pass
 
 
 class ConfigurationError(Exception):
+
+    """Indicating errors in the configuration."""
+
     pass
 
 
@@ -95,7 +101,7 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
     entitytype_name = explode(identifier)[-1][0]
 
-    entitytype = entitytype_from_name(conn, entitytype_name)
+    entitytype = name_to_entitytype(cursor, entitytype_name)
 
     if identifier_is_alias:
         alias_type_id = get_alias_type_id(conn, alias_type)
@@ -209,10 +215,8 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
         if entitytype_name is None or entitytype_name == "":
             entitytype_name = explode(dn)[-1][0]
-            try:
-                entitytype = get_entitytype(conn, entitytype_name)
-            except NoSuchEntityTypeError:
-                entitytype = create_entitytype(conn, entitytype_name, "")
+
+            entitytype = name_to_entitytype(cursor, entitytype_name)
 
         utc_timestamp = ts.astimezone(pytz.utc)
         utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
@@ -226,8 +230,6 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
         elif storagetype == "trend":
             granularity = plugin.create_granularity(granularity)
 
-            trendstore = plugin.get_trendstore(datasource, entitytype, granularity)
-
             raw_datapackage = plugin.RawDataPackage(
                 granularity, utc_timestamp_str, fields, raw_data_rows)
 
@@ -240,25 +242,28 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
 
 def record_passes_checks(checks, record):
+    """Return True if record passes all checks and False otherwise."""
     return all(check(record) for check in checks)
 
 
-def entitytype_from_name(conn, name):
-    try:
-        return get_entitytype(conn, name)
-    except NoSuchEntityTypeError:
-        return create_entitytype(conn, name, "")
-
-
 def is_field_empty(field_name, record):
+    """Return True if value of field `field_name` in `record` equals ''."""
     return record[field_name] == ""
 
 
 def any_field_empty(field_names, record):
+    """Return True if value of one of `field_names` in `record` equals ''."""
     return any(record[field_name] == "" for field_name in field_names)
 
 
 def get_value_by_key(key, record, default=None):
+    """
+    Return value with key `key` from `record` or otherwise `default`.
+
+    This has the same function as dict.get, but with different argument order
+    to support partial application.
+
+    """
     v = record[key]
     if v:
         return v
