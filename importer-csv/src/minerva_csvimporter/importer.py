@@ -92,16 +92,15 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
         except ValueError:
             continue
 
+    entitytype_name = explode(identifier)[-1][0]
+
     with closing(conn.cursor()) as cursor:
         datasource = name_to_datasource(cursor, datasource_name)
+        entitytype = name_to_entitytype(cursor, entitytype_name)
 
     conn.commit()
 
     plugin = init_plugin(conn, storagetype)
-
-    entitytype_name = explode(identifier)[-1][0]
-
-    entitytype = name_to_entitytype(cursor, entitytype_name)
 
     if identifier_is_alias:
         alias_type_id = get_alias_type_id(conn, alias_type)
