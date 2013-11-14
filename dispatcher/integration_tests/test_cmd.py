@@ -1,10 +1,12 @@
 """Tests that start the dispatcher as a sub-process."""
+import io
 import os
 from subprocess import Popen, PIPE
 import json
 from time import sleep
 from datetime import datetime
 from contextlib import closing
+import threading
 
 from nose.tools import eq_
 
@@ -13,7 +15,7 @@ from minerva.system.jobsource import JobSource
 
 
 TEST_CONFIG = """\
-log_directory = /tmp/
+log_directory = /tmp/dispatcher_test/
 log_filename = dispatcher.log
 log_rotation_size = 10MB
 log_level = INFO
@@ -63,6 +65,8 @@ def test_cmd_1():
     cmd = ["dispatcher", "-c", config_file_path]
     p = Popen(cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
 
+    show_output(p)
+
     sleep(2)
 
     timestamp = datetime.now()
@@ -81,6 +85,21 @@ def test_cmd_1():
             job_rows = cursor.fetchall()
 
     eq_(len(job_rows), 1)
+
+
+def show_output(process):
+    stderr_thread = threading.Thread(target=stream_printer,
+                                     args=(process.stderr,))
+    stderr_thread.start()
+
+    stdout_thread = threading.Thread(target=stream_printer,
+                                     args=(process.stdout,))
+    stdout_thread.start()
+
+
+def stream_printer(stream):
+    for line in io.open(stream.fileno()):
+        print(line)
 
 
 def create_dummy_file(file_path):

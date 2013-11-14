@@ -32,24 +32,19 @@ import signal
 from contextlib import closing
 from functools import partial
 import traceback
-import Queue
 import threading
-import json
 from operator import not_
 
 import psycopg2.extensions
 
-from minerva.util import each, iter_queue, make_tuple, compose, \
+from minerva.util import each, compose, \
     no_op, after, retry_while
 from minerva.util.config import parse_size, load_config, get_defaults, \
     ConfigError
-from minerva.system.jobqueue import enqueue_job
 from minerva.instance import MinervaInstance
 
 from minerva_dispatcher.version import __version__ as version
-from minerva_dispatcher import setup_notifier, get_job_sources, JOB_TYPE
-
-TIMEOUT = 1.0
+from minerva_dispatcher import JobCollector, get_job_sources
 
 SIGNAL_MAP = {
     signal.SIGKILL: "SIGKILL",
@@ -131,71 +126,58 @@ def main():
                 stop_event.wait(1.0)
 
     with closing(connect()) as conn:
-        queue = Queue.Queue()
-
-        datasource_events = iter_queue(stop_event, queue.get_nowait,
-                                       Queue.Empty, TIMEOUT)
-
-        process_datasource_event = partial(process, conn, stop_event)
-
-        consumer_loop = partial(each, process_datasource_event,
-                                datasource_events)
-
-        consumer = threading.Thread(target=consumer_loop, name="consumer")
-        consumer.start()
-
-        enqueue = compose(queue.put, make_tuple)
-
         with closing(conn.cursor()) as cursor:
             job_sources = get_job_sources(cursor)
 
         conn.commit()
 
-        notifier = setup_notifier(job_sources, enqueue)
-        notifier.start()
+        jobcollector = JobCollector(job_sources, stop_event)
+        jobcollector.start()
+
+        process_job = partial(store_job, conn, stop_event)
+
+        consumer_loop = partial(each, process_job,
+                                jobcollector.iter_jobs())
+
+        consumer = threading.Thread(target=consumer_loop, name="consumer")
+        consumer.start()
 
         logging.info("started with pid {0:d}".format(os.getpid()))
 
         while not stop_event.is_set():
             stop_event.wait(1.0)
 
-        notifier.stop()
+        jobcollector.stop()
 
         conn.commit()
 
         logging.info("stopped")
 
 
-def process(conn, stop_event, item):
-    job_source_id, job_description = item
-
-    path = job_description["uri"]
-
+def store_job(conn, stop_event, job):
     try:
-        filesize = os.path.getsize(path)
-    except OSError as exc:
-        logging.info("could not get size of file: {}".format(exc))
-        return
-
-    e = partial(enqueue_job, conn, JOB_TYPE, json.dumps(job_description),
-                filesize, job_source_id)
-
-    # In case of a database shutdown, we first get an InterfaceError and the
-    # next time an OperationalError
-    exception_handler_map = {
-        psycopg2.InterfaceError: no_op,
-        psycopg2.OperationalError: no_op}
-
-    condition = compose(not_, stop_event.is_set)
-
-    try:
-        retry_while(e, exception_handler_map, condition)
-    except Exception:
+        resilient_db_exec(
+            action=partial(job.enqueue, conn),
+            stop_event=stop_event)
+    except:
         logging.error(traceback.format_exc())
         conn.rollback()
     else:
         conn.commit()
-        logging.info("enqueued {}".format(path))
+        logging.info("enqueued {}".format(job.description["uri"]))
+
+
+# In case of a database shutdown, we first get an InterfaceError and the
+# next time an OperationalError
+EXCEPTION_HANDLER_MAP = {
+    psycopg2.InterfaceError: no_op,
+    psycopg2.OperationalError: no_op}
+
+
+def resilient_db_exec(action, stop_event):
+    condition = compose(not_, stop_event.is_set)
+
+    retry_while(action, EXCEPTION_HANDLER_MAP, condition)
 
 
 def setup_logging(directory, filename, rotation_size, level):

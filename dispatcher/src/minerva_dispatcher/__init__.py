@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Provides the JobCollector class."""
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
@@ -12,22 +13,53 @@ this software.
 import os
 import logging
 import re
+import Queue
 
 import pyinotify
 
-from minerva.util import expand_args, no_op
+from minerva.util import expand_args, iter_queue, no_op
 
-from minerva_dispatcher.harvestjobsource import HarvestJobSource
+from minerva_dispatcher.harvestjobsource import HarvestJobSource, JOB_TYPE
 from minerva_dispatcher.error import ConfigError
-
-
-JOB_TYPE = "harvest"
 
 EVENT_MASK = (
     pyinotify.IN_MOVED_TO |
     pyinotify.IN_CLOSE_WRITE |
     pyinotify.IN_CREATE  # Needed for auto-watching created directories
 )
+
+TIMEOUT = 1.0
+
+
+class JobCollector(object):
+
+    """
+    Collects jobs for specified job_sources.
+
+    Each harvest jobsource points to a directory and the JobCollector monitors
+    the filesystem for new files using inotify.
+
+    """
+
+    def __init__(self, job_sources, stop_event):
+        self.job_sources = job_sources
+        self.stop_event = stop_event
+        self.notifier = None
+        self.queue = Queue.Queue()
+        self.notifier = setup_notifier(self.job_sources, self.queue.put)
+
+    def start(self):
+        """Start the job collection."""
+        self.notifier.start()
+
+    def stop(self):
+        """Stop the job collection."""
+        self.notifier.stop()
+
+    def iter_jobs(self):
+        """Return iterator over the job queue."""
+        return iter_queue(self.stop_event, self.queue.get_nowait, Queue.Empty,
+                          TIMEOUT)
 
 
 def get_job_sources(cursor):
@@ -82,7 +114,10 @@ def watch_source(watch_manager, enqueue, job_source):
     def handle_event(event):
         if event_matches(event):
             file_path = os.path.join(event.path, event.name)
-            enqueue(job_source.id, job_source.job_description(file_path))
+
+            job = job_source.create_job(file_path)
+
+            enqueue(job)
 
     proc_fun = event_handler({
         "IN_CLOSE_WRITE": handle_event,
