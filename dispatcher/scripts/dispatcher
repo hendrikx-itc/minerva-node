@@ -148,6 +148,11 @@ def main():
             stop_event.wait(1.0)
 
         jobcollector.stop()
+        jobcollector.join()
+        logging.info("collector stopped")
+
+        consumer.join()
+        logging.info("consumer stopped")
 
         conn.commit()
 
@@ -211,7 +216,7 @@ class GenerateConfigFileAction(argparse.Action):
 
 
 def log_signal(signum, _frame):
-    logging.info("Stopping Dispatcher after receiving {0!s} signal".format(
+    logging.info("{0!s} signal received".format(
         SIGNAL_MAP.get(signum, signum)))
 
 

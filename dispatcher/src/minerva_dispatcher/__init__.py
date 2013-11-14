@@ -56,6 +56,10 @@ class JobCollector(object):
         """Stop the job collection."""
         self.notifier.stop()
 
+    def join(self):
+        """Wait for termination of the notifier thread."""
+        self.notifier.join()
+
     def iter_jobs(self):
         """Return iterator over the job queue."""
         return iter_queue(self.stop_event, self.queue.get_nowait, Queue.Empty,
