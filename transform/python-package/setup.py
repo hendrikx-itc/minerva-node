@@ -23,6 +23,5 @@ setup(
     package_dir={"": "src"},
     package_data={"minerva_transform": ["defaults/*"]},
     scripts=["scripts/create-transform-functions", "scripts/transform",
-             "scripts/create-transform-jobs", "scripts/compile-backlog",
-             "scripts/clean-up-modified"]
+             "scripts/create-transform-jobs", "scripts/compile-backlog"]
 )
