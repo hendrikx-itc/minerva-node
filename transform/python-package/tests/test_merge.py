@@ -14,7 +14,7 @@ from datetime import datetime
 
 from nose.tools import assert_raises, assert_true, assert_false, assert_equal
 
-from minerva.transform import merge
+from minerva_transform import merge
 
 
 def test_merge():

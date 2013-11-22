@@ -14,13 +14,12 @@ from setuptools import setup
 
 setup(
     name="minerva_materialize",
-    version="0.1.0",
+    version="4.0.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=4.0"],
     test_suite="nose.collector",
-    namespace_packages=["minerva"],
-    packages=["minerva", "minerva.materialize"],
+    packages=["minerva_materialize"],
     package_dir={"": "src"},
     scripts=[]
 )

@@ -5,14 +5,14 @@ from nose.tools import eq_
 from minerva.test import with_conn, with_dataset
 from minerva.directory.helpers_v4 import name_to_datasource, name_to_entitytype
 
-from minerva_storage_trend.test import DataSet
-from minerva_storage_trend.view import View
-from minerva_storage_trend.trendstore import TrendStore, store_copy_from, \
+from minerva.storage.trend.test import DataSet
+from minerva.storage.trend.view import View
+from minerva.storage.trend.trendstore import TrendStore, store_copy_from, \
     mark_modified
-from minerva_storage_trend.datapackage import DataPackage
-from minerva_storage_trend.granularity import create_granularity
+from minerva.storage.trend.datapackage import DataPackage
+from minerva.storage.trend.granularity import create_granularity
 
-from minerva.materialize.types import Materialization
+from minerva_materialize.types import Materialization
 
 from minerva_db import clear_database
 

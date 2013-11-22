@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2008-2011 Hendrikx-ITC B.V.
+Copyright (C) 2008-2013 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -15,289 +14,328 @@ import os
 import sys
 import logging
 import json
-from logging.handlers import RotatingFileHandler
 import argparse
 from configobj import ConfigObj
-import pkg_resources
-from contextlib import closing
+from contextlib import closing, contextmanager
 from functools import partial
 from operator import itemgetter
 import re
 
-import psycopg2.extras
-
-from minerva.db import parse_db_url
-from minerva.util.debug import log_call_basic
-from minerva.util import parse_size, compose, expand_args, unlines, k, \
-		make_tuple
+from minerva.util import compose, expand_args, unlines, k, \
+    make_tuple
 from minerva.util.config import get_defaults
 from minerva.util.tabulate import render_table
+from minerva.instance import MinervaInstance
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.storage import get_plugin
 
-from minerva.harvesting.fileprocessor import process_file
-from minerva.harvesting.plugins import ENTRYPOINT, load_plugins
+from minerva_harvesting.fileprocessor import process_file
+from minerva_harvesting.plugins import iter_entry_points, \
+    get_plugin as get_harvest_plugin
 
 
-package_name = "minerva.harvester"
+package_name = "minerva_harvesting"
 script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
-
-
-level_map = {
-	"DEBUG": logging.DEBUG,
-	"INFO": logging.INFO,
-	"WARNING": logging.WARNING,
-	"ERROR": logging.ERROR,
-	"CRITICAL": logging.CRITICAL}
+configfile_path = os.path.join("/etc/minerva/", config_file)
 
 
 def main():
-	configfile_path = os.path.join("/etc/minerva/", config_file)
+    args = create_argparser().parse_args()
 
-	parser = argparse.ArgumentParser(description="Script for processing files")
+    if args.debug:
+        logging.root.setLevel(logging.DEBUG)
 
-	parser.add_argument("file_path", nargs="*",
-		help="Path of file that will be processed")
+    if args.verbose:
+        logging.root.addHandler(logging.StreamHandler())
 
-	parser.add_argument("-p", "--plugin",
-		help="Harvester plug-in to use for processing file(s)")
+    handle_package = partial(filter_package, args.dn_filter,
+                             args.trend_filter)
+    handle_package = compose(handle_package, make_tuple)
 
-	parser.add_argument("-l", "--list-plugins", action="store_true",
-		dest="list_plugins", help="List installed Harvester plug-ins")
+    if args.debug:
+        handle_package = compose(show_package, handle_package)
 
-	parser.add_argument("-c", "--configfile", default=configfile_path,
-		dest="configfile", help="Path to config file")
+    statistics = Statistics()
 
-	parser.add_argument("--parser-config", default="{}", dest="parserconfig",
-		help="Parser specific configuration")
+    if args.statistics:
+        handle_package = compose(statistics.extract_statistics,
+                                 handle_package)
 
-	parser.add_argument("--store", action="store_true", default=False,
-		help="Write data to database")
+    if args.store:
+        minerva_instance = MinervaInstance.load(args.instance_name)
 
-	parser.add_argument("--show-progress", action="store_true",
-		dest="show_progress", default=False, help="Show progressbar")
+        logging.debug("Minerva instance: {}".format(minerva_instance))
 
-	parser.add_argument("-v", "--verbose", action="store_true", dest="verbose",
-		default=False, help="Produce verbose output")
+        user = (
+            args.user
+            or args.config.get("database", {}).get("user")
+            or "minerva_admin"
+        )
 
-	parser.add_argument("--debug", action="store_true", dest="debug",
-		default=False, help="Produce debug output")
+        logging.debug("database user: {}".format(user))
+        logging.debug("storage type: {}".format(args.plugin.storagetype()))
 
-	parser.add_argument("--filter-dn", help="filter by distinguished name")
+        storage_provider = partial(store_database, minerva_instance, user,
+                                   args.plugin.storagetype(),
+                                   args.datasource)
+    else:
+        storage_provider = store_dummy
 
-	parser.add_argument("--filter-trend", help="filter by trend name")
+    with storage_provider() as store_raw:
+        handle_package = compose(expand_args(store_raw), handle_package)
 
-	parser.add_argument("--generate-configfile",
-			action=GenerateConfigFileAction, nargs=0,
-			help="generate default config file")
+        for file_path in args.file_path:
+            if args.verbose:
+                logging.info("Processing {0}".format(file_path))
 
-	parser.add_argument("--datasource", dest="datasource",
-		help="Datasource to use")
-	
-	parser.add_argument("--statistics", action="store_true", dest="statistics",
-		default=False, help="Show statistics like number of packages, entities, etc.")
+            logging.info(
+                "Start processing file {0} using plugin {1}"
+                " and config {2}".format(
+                    file_path, args.plugin, args.parser_config))
 
-	args = parser.parse_args()
+            process_file(file_path, args.plugin, args.parser_config,
+                         handle_package, args.show_progress)
 
-	if args.list_plugins:
-		for entrypoint in pkg_resources.iter_entry_points(group=ENTRYPOINT):
-			print(entrypoint.name)
-
-		return 0
-
-	if not os.path.isfile(args.configfile):
-		print("Config file {0} could not be found.".format(args.configfile))
-		return -1
-
-	config = ConfigObj(args.configfile)
-
-	log_level = level_map[config["log_level"]]
-
-	if args.debug:
-		log_level = logging.DEBUG
-
-	parser_config = json.loads(args.parserconfig)
-
-	logger = setup_logging(config["log_directory"], config["log_filename"],
-		config["log_rotation_size"], log_level)
-	
-	if args.verbose:
-		logger.addHandler(logging.StreamHandler())
-
-	if not args.plugin:
-		print("Harvester plug-in {0} could not be found.".format(args.plugin))
-		return 1
-
-	if args.filter_dn:
-		entity_filter = re.compile(args.filter_dn).match
-	else:
-		entity_filter = k(True)
-
-	if args.filter_trend:
-		trend_filter = re.compile(args.filter_trend).match
-	else:
-		trend_filter = k(True)
-
-	harvest_plugins = load_plugins()
-	harvest_plugin = harvest_plugins.get(args.plugin, None)
-
-	if harvest_plugin is None:
-		print("Data type '{0}' not supported".format(args.plugin))
-		return 1
+    if args.statistics:
+        for line in statistics.report():
+            logging.info(line)
 
 
-	handle_package = partial(filter_package, entity_filter, trend_filter)
-	handle_package = compose(handle_package, make_tuple)
+def create_argparser():
+    parser = argparse.ArgumentParser(description="Script for processing files")
 
-	if args.debug:
-		handle_package = compose(show_package, handle_package)
+    parser.add_argument(
+        "file_path", nargs="*",
+        help="path of file that will be processed")
 
-	statistics = Statistics()
+    instance_name = os.environ.get("DEFAULT_MINERVA_INSTANCE") or 'default'
 
-	if args.statistics:
-		handle_package = compose(extract_statistics(statistics), handle_package)
+    parser.add_argument(
+        "-i", "--instance", dest="instance_name", default=instance_name,
+        help="name of the minerva instance")
 
-	if args.debug:
-		db_logger = logging.getLogger("")
-	else:
-		db_logger = None
+    parser.add_argument("-u", "--user", help="user to connect to database")
 
-	db_uri = config["db_uri"]
+    parser.add_argument(
+        "-p", "--plugin", action=_LoadHarvestPlugin,
+        help="harvester plug-in to use for processing file(s)")
 
-	with closing(connect(db_uri, db_logger)) as conn:
-		with closing(conn.cursor()) as cursor:
-			datasource = name_to_datasource(cursor, args.datasource)
+    parser.add_argument(
+        "-l", "--list-plugins", action=_ListPlugins,
+        help="list installed Harvester plug-ins")
 
-		if args.store:
-			storageprovider = get_plugin(harvest_plugin.storagetype())(conn, api_version=4)
+    parser.add_argument(
+        "-c", "--configfile", action=_LoadConfig,
+        default=load_default_config(),
+        dest="config", help="path to config file")
 
-			store_raw = compose(partial(storageprovider.store_raw, datasource),
-					storageprovider.RawDataPackage)
+    parser.add_argument(
+        "--parser-config", default="{}", type=json.loads,
+        help="parser specific configuration")
 
-			handle_package = compose(expand_args(store_raw), handle_package)
+    parser.add_argument(
+        "--store", action="store_true", default=False,
+        help="write data to database")
 
-		for file_path in args.file_path:
-			if args.verbose:
-				logging.info("Processing {0}".format(file_path))
+    parser.add_argument(
+        "--show-progress", action="store_true",
+        dest="show_progress", default=False, help="show progressbar")
 
-			message = (
-				"Start processing file {0} using plugin {1}"
-				" and config {2}").format(file_path, args.plugin, parser_config)
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", dest="verbose",
+        default=False, help="produce verbose output")
 
-			logging.info(message)
+    parser.add_argument(
+        "--debug", action="store_true", dest="debug",
+        default=False, help="produce debug output")
 
-			process_file(file_path, harvest_plugin, parser_config, handle_package,
-				args.show_progress)
-	
-	if args.statistics:
-		logging.info("{} packages extracted".format(statistics.package_count))
+    parser.add_argument("--dn-filter", type=create_dn_filter,
+                        default=k(True), help="filter by distinguished name")
 
-	return 0
+    parser.add_argument("--trend-filter", type=create_trend_filter,
+                        default=k(True), help="filter by trend name")
+
+    parser.add_argument(
+        "--generate-configfile", action=GenerateConfigFileAction,
+        help="generate default config file")
+
+    parser.add_argument(
+        "--datasource", dest="datasource", default="processfile",
+        help="datasource to use")
+
+    parser.add_argument(
+        "--statistics", action="store_true", dest="statistics", default=False,
+        help="show statistics like number of packages, entities, etc.")
+
+    return parser
+
+
+def create_dn_filter(x):
+    if x:
+        return re.compile(x).match
+    else:
+        return k(True)
+
+
+def create_trend_filter(x):
+    if x:
+        return re.compile(x).match
+    else:
+        return k(True)
 
 
 class Statistics(object):
-	def __init__(self):
-		self.package_count = 0
+    def __init__(self):
+        self.package_count = 0
 
+    def extract_statistics(self, package):
+        self.package_count += 1
 
-def extract_statistics(stats):
-	def f(package):
-		stats.package_count += 1
+        return package
 
-		return package
-
-	return f
+    def report(self):
+        return [
+            "{} packages".format(self.package_count)
+        ]
 
 
 def filter_package(entity_filter, trend_filter, package):
-	trend_names, rows = package[-2:]
+    trend_names, rows = package[-2:]
 
-	filtered_trend_names = filter(trend_filter, trend_names)
+    filtered_trend_names = filter(trend_filter, trend_names)
 
-	if len(filtered_trend_names) > 0:
-		trend_filter_map = map(trend_filter, trend_names)
+    if len(filtered_trend_names) > 0:
+        trend_filter_map = map(trend_filter, trend_names)
 
-		filter_rows = compose(entity_filter, itemgetter(0))
+        filter_rows = compose(entity_filter, itemgetter(0))
 
-		entity_filtered_rows = filter(filter_rows, rows)
+        entity_filtered_rows = filter(filter_rows, rows)
 
-		filtered_rows = []
+        filtered_rows = []
 
-		for dn, values in entity_filtered_rows:
-			trend_filtered_values = [v for include, v in
-					zip(trend_filter_map, values) if include]
+        for dn, values in entity_filtered_rows:
+            trend_filtered_values = [v
+                                     for include, v in
+                                     zip(trend_filter_map, values)
+                                     if include]
 
-			trend_filtered_row = dn, trend_filtered_values
+            trend_filtered_row = dn, trend_filtered_values
 
-			filtered_rows.append(trend_filtered_row)
-	else:
-		filtered_rows = []
+            filtered_rows.append(trend_filtered_row)
+    else:
+        filtered_rows = []
 
-	return package[:-2] + (filtered_trend_names, filtered_rows)
+    return package[:-2] + (filtered_trend_names, filtered_rows)
 
 
 def show_package(package):
-	trend_names, rows = package[-2:]
+    trend_names, rows = package[-2:]
 
-	if rows:
-		render_as_table(trend_names, rows)
+    if rows:
+        render_as_table(trend_names, rows)
 
-	return package
+    return package
 
 
 def render_as_table(trend_names, rows):
-	column_names = ["dn"] + list(trend_names)
-	column_align = ">" * len(column_names)
-	column_sizes = ["max"] * len(column_names)
+    column_names = ["dn"] + list(trend_names)
+    column_align = ">" * len(column_names)
+    column_sizes = ["max"] * len(column_names)
 
-	rows = [[dn] + values for dn, values in rows]
+    rows = [[dn] + values for dn, values in rows]
 
-	table = render_table(column_names, column_align, column_sizes, rows)
+    table = render_table(column_names, column_align, column_sizes, rows)
 
-	print(unlines(table))
+    print(unlines(table))
+
+
+def load_default_config():
+    return ConfigObj(get_defaults(package_name, config_file))
 
 
 class GenerateConfigFileAction(argparse.Action):
-	def __call__(self, parser, namespace, values, option_string=None):
-		sys.stdout.write(get_defaults(package_name, config_file))
-		sys.exit(0)
+    def __call__(self, parser, namespace, values, option_string=None):
+        sys.stdout.write(get_defaults(package_name, config_file))
+        sys.exit(0)
 
 
-def connect(db_url, logger=None):
-	scheme, user, password, host, port, database = parse_db_url(db_url)
+class _ListPlugins(argparse.Action):
+    def __init__(self, option_strings, dest=argparse.SUPPRESS,
+                 default=argparse.SUPPRESS, help=None):
+        super(_ListPlugins, self).__init__(option_strings=option_strings,
+                                           dest=dest, default=default, nargs=0,
+                                           help=help)
 
-	assert scheme == "postgresql", "Only PostgreSQL connections are supported"
+    def __call__(self, parser, namespace, values, option_string=None):
+        for entrypoint in iter_entry_points():
+            print(entrypoint.name)
 
-	create_connection = partial(psycopg2.connect, database=database, user=user,
-			password=password, host=host, port=port)
-
-	if logger:
-		conn = create_connection(connection_factory=psycopg2.extras.LoggingConnection)
-
-		conn.initialize(logger)
-	else:
-		conn = create_connection()
-
-	return conn
+        sys.exit(0)
 
 
-def setup_logging(directory, filename, rotation_size, level):
-	max_log_size = parse_size(rotation_size)
+class _LoadConfig(argparse.Action):
+    def __init__(self, option_strings, dest=argparse.SUPPRESS,
+                 default=argparse.SUPPRESS, help=None,
+                 defaults_loader=load_default_config):
+        super(_LoadConfig, self).__init__(option_strings=option_strings,
+                                          dest=dest, default=default, nargs=1,
+                                          help=help)
 
-	filepath = os.path.join(directory, filename)
-	handler = RotatingFileHandler(filepath, maxBytes=max_log_size, backupCount=5)
-	handler.setLevel(level)
+        self.load_default_config = load_default_config
 
-	formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-	handler.setFormatter(formatter)
+    def __call__(self, parser, namespace, values, option_string=None):
+        file_path = values[0]
 
-	root_logger = logging.getLogger("")
-	root_logger.setLevel(level)
-	root_logger.addHandler(handler)
+        if not os.path.isfile(file_path):
+            print("Config file {0} could not be found.".format(
+                file_path))
+            sys.exit(1)
 
-	return root_logger
+        setattr(namespace, self.dest, ConfigObj(file_path))
+
+
+class _LoadHarvestPlugin(argparse.Action):
+    def __init__(self, option_strings, dest=argparse.SUPPRESS,
+                 default=argparse.SUPPRESS, help=None):
+        super(_LoadHarvestPlugin, self).__init__(
+            option_strings=option_strings, dest=dest, default=default,
+            nargs=1, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        plugin_name = values[0]
+
+        plugin = get_harvest_plugin(plugin_name)
+
+        if plugin is None:
+            print("Data type '{0}' not supported".format(plugin_name))
+            sys.exit(1)
+
+        setattr(namespace, self.dest, plugin)
+
+
+@contextmanager
+def store_database(minerva_instance, user, storage_type, datasource_name):
+    with closing(minerva_instance.connect(user=user)) as conn:
+        with closing(conn.cursor()) as cursor:
+            datasource = name_to_datasource(cursor, datasource_name)
+
+        conn.commit()
+
+        storage = get_plugin(storage_type)(conn, api_version=4)
+
+        yield compose(partial(storage.store_raw, datasource),
+                      storage.RawDataPackage)
+
+
+@contextmanager
+def store_dummy():
+    yield no_op
+
+
+def no_op(*args, **kwargs):
+    pass
 
 
 if __name__ == "__main__":
-	sys.exit(main())
+    main()

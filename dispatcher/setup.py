@@ -13,12 +13,11 @@ this software.
 from setuptools import setup
 
 setup(name="dispatcher",
-	version="2.0.0",
-	install_requires=["configobj",
-		"minerva>=3.0.0"],
-	test_suite="nose.collector",
-	namespace_packages=["minerva"],
-	package_data={"minerva.dispatcher": ["defaults/*"]},
-	packages=["minerva", "minerva.dispatcher"],
-	package_dir={"": "src"},
-	scripts=["scripts/dispatcher", "scripts/enqueue-job", "scripts/sweep-jobs"])
+    version="4.0.0",
+    install_requires=["configobj",
+        "minerva>=3.0.0", "pyinotify"],
+    test_suite="nose.collector",
+    package_data={"minerva_dispatcher": ["defaults/*"]},
+    packages=["minerva_dispatcher"],
+    package_dir={"": "src"},
+    scripts=["scripts/dispatcher", "scripts/enqueue-job", "scripts/sweep-jobs"])

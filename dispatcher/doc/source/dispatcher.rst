@@ -1,7 +1,7 @@
 The dispatcher module
 ---------------------
 
-.. automodule:: minerva.dispatcher.dispatcher
+.. automodule:: minerva_dispatcher.dispatcher
 
 :class:`Dispatcher` Objects
 

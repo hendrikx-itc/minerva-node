@@ -21,20 +21,17 @@ import argparse
 from contextlib import closing
 from StringIO import StringIO
 import json
-from functools import partial
 
-import psycopg2
 from configobj import ConfigObj
 from pkg_resources import resource_string
 
 from minerva.instance import MinervaInstance
-from minerva.util import parse_size
-from minerva.db import parse_db_url
-from minerva.csvimporter import import_csv
+from minerva.util.config import parse_size
+from minerva_csvimporter import import_csv
 
-DEFAULT_CONFIG = resource_string("minerva.csvimporter",
+DEFAULT_CONFIG = resource_string("minerva_csvimporter",
                                  "defaults/import-csv.conf")
-DEFAULT_PROFILE = resource_string("minerva.csvimporter", "defaults/profile")
+DEFAULT_PROFILE = resource_string("minerva_csvimporter", "defaults/profile")
 
 GRANULARITIES = {
     "qtr": 900,
@@ -57,7 +54,7 @@ def main():
         return 0
 
     if args.timestamp and args.timestamp.lower() == "now":
-        timestamp = datetime.strftime(datetime.now(), args.timestamp_format)
+        timestamp = datetime.now().strftime(args.timestamp_format)
     else:
         timestamp = args.timestamp
 
@@ -65,10 +62,7 @@ def main():
 
     config = get_config(args)
 
-    setup_logging(config["log_directory"], config["log_filename"],
-                  config["log_rotation_size"], config["log_level"],
-                  args.verbose, args.quiet)
-
+    logging.root.addHandler(logging.StreamHandler())
     logging.root.setLevel(config["log_level"])
 
     profile = get_profile(args, config)
@@ -78,9 +72,7 @@ def main():
     config_user = config.get("database", {}).get("user")
     user = config_user or args.user or "minerva_admin"
 
-    db_uri = minerva_instance.get_db_uri(user)
-
-    with closing(connect(db_uri)) as conn:
+    with closing(minerva_instance.connect(user=user)) as conn:
         logging.info("start processing file {0}".format(args.file_path))
         logging.info("using identifier {0}".format(args.identifier))
 
@@ -157,7 +149,7 @@ def create_argument_parser():
         help="regular expression for timestamp extraction from filename")
 
     parser.add_argument(
-        "--timestamp-format", default="%%Y%%m%%d_%%H%%M",
+        "--timestamp-format", default="%Y%m%d_%H%M",
         help="format of date: default: %%Y%%m%%d_%%H%%M")
 
     parser.add_argument(
@@ -250,35 +242,8 @@ def get_config(args):
     if os.path.isfile(args.configfile):
         custom_config = ConfigObj(args.configfile)
         config.merge(custom_config)
-    else:
-        print("'{0}' doesn't exist. Using default config.".format(
-            args.configfile))
 
     return config
-
-
-def connect(db_url, logger=None):
-    scheme, user, password, host, port, database = parse_db_url(db_url)
-
-    assert scheme == "postgresql", "Only PostgreSQL connections are supported"
-
-    if not password is None:
-        create_connection = partial(psycopg2.connect, database=database,
-                                    user=user, password=password, host=host,
-                                    port=port)
-    else:
-        create_connection = partial(psycopg2.connect, database=database,
-                                    user=user, host=host, port=port)
-
-    if logger:
-        conn = create_connection(
-            connection_factory=psycopg2.extras.LoggingConnection)
-
-        conn.initialize(logger)
-    else:
-        conn = create_connection()
-
-    return conn
 
 
 def get_profile(args, config):
@@ -370,6 +335,7 @@ def get_profile(args, config):
             sys.exit(1)
 
     return profile
+
 
 if __name__ == '__main__':
     sys.exit(main())

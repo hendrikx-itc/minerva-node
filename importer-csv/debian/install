@@ -1,1 +1,1 @@
-src/minerva/csvimporter/defaults/import-csv.conf /etc/minerva/
+src/minerva_csvimporter/defaults/import-csv.conf /etc/minerva/

@@ -14,13 +14,12 @@ from setuptools import setup
 
 setup(
     name="CSVImporter",
-    version="3.0.0",
+    version="4.0.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=3", "configobj"],
     test_suite="nose.collector",
-    namespace_packages=["minerva"],
-    packages=["minerva", "minerva.csvimporter"],
+    packages=["minerva_csvimporter"],
     package_dir={"": "src"},
-    package_data = {"minerva.csvimporter": ["defaults/*"]},
+    package_data={"minerva_csvimporter": ["defaults/*"]},
     scripts=["scripts/import-csv"])

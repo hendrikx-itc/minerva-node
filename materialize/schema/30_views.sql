@@ -11,7 +11,7 @@ SET search_path = materialization, pg_catalog;
 -- View 'tagged_runnable_materializations'
 
 CREATE OR REPLACE VIEW tagged_runnable_materializations AS
-	SELECT state.type_id, timestamp, processed_max_modified, t.name as tag
+	SELECT state.type_id, timestamp, t.name as tag
 		FROM materialization.state
 		JOIN materialization.type_tag_link mtl ON mtl.type_id = state.type_id
 		JOIN directory.tag t ON t.id = mtl.tag_id
@@ -19,7 +19,7 @@ CREATE OR REPLACE VIEW tagged_runnable_materializations AS
 		JOIN trend.trendstore ts ON ts.id = mt.dst_trendstore_id
 		LEFT JOIN system.job j ON j.id = state.job_id
 		WHERE
-			(max_modified > processed_max_modified OR processed_max_modified IS NULL)
+			(sources <> processed_sources OR processed_sources IS NULL)
 			AND (state.job_id IS NULL OR NOT j.state IN ('queued', 'running'))
 			AND materialization.runnable(mt, timestamp, max_modified)
 		ORDER BY ts.granularity ASC, timestamp DESC;
@@ -31,24 +31,44 @@ GRANT SELECT ON materialization.tagged_runnable_materializations TO minerva;
 GRANT INSERT,DELETE,UPDATE ON materialization.tagged_runnable_materializations TO minerva_writer;
 
 
+-- View 'materializable_source_state'
+
+
+CREATE OR REPLACE VIEW materializable_source_state AS
+        SELECT
+                mt.id AS type_id,
+                trend.get_timestamp_for(dst.granularity, mdf.timestamp) AS timestamp,
+		p.trendstore_id,
+		mdf.timestamp AS src_timestamp,
+                mdf."end" AS modified
+        FROM trend.modified mdf
+        JOIN trend.partition p ON
+                mdf.table_name = p.table_name
+        JOIN trend.view_trendstore_link vtl ON
+                vtl.trendstore_id = p.trendstore_id
+        JOIN trend.view v ON
+		v.id = vtl.view_id
+        JOIN materialization.type mt ON
+                mt.src_trendstore_id = v.trendstore_id
+        JOIN trend.trendstore dst ON
+                dst.id = mt.dst_trendstore_id;
+
+ALTER VIEW materializable_source_state OWNER TO minerva_admin;
+
+GRANT ALL ON materialization.materializable_source_state TO minerva_admin;
+GRANT SELECT ON materialization.materializable_source_state TO minerva;
+GRANT INSERT,DELETE,UPDATE ON materialization.materializable_source_state TO minerva_writer;
+
 -- View 'materializables'
 
-CREATE VIEW materializables AS
-	SELECT
-		mt.id AS type_id,
-		trend.get_timestamp_for(dst.granularity, mdf.timestamp) AS timestamp,
-		max(mdf."end") AS max_modified
-	FROM trend.modified mdf
-	JOIN trend.partition p ON
-		mdf.table_name = p.table_name
-	JOIN trend.view_trendstore_link vtl ON
-		vtl.trendstore_id = p.trendstore_id
-	JOIN trend.view v ON v.id = vtl.view_id
-	JOIN materialization.type mt ON
-		mt.src_trendstore_id = v.trendstore_id
-	JOIN trend.trendstore dst ON
-		dst.id = mt.dst_trendstore_id
-	GROUP BY mt.id, trend.get_timestamp_for(dst.granularity, mdf.timestamp);
+CREATE OR REPLACE VIEW materializables AS
+        SELECT
+                type_id,
+                timestamp,
+                max(modified) AS max_modified,
+		array_agg((trendstore_id, modified)::source_modified ORDER BY trendstore_id, modified) AS sources
+        FROM materialization.materializable_source_state
+        GROUP BY type_id, timestamp;
 
 ALTER VIEW materializables OWNER TO minerva_admin;
 
@@ -59,8 +79,66 @@ GRANT SELECT ON materialization.materializables TO minerva;
 GRANT INSERT,DELETE,UPDATE ON materialization.materializables TO minerva_writer;
 
 
+-- View 'new_materializables'
 
-CREATE VIEW trend_ext AS
+CREATE OR REPLACE VIEW new_materializables AS
+	SELECT mzb.type_id, mzb.timestamp, mzb.max_modified, mzb.sources
+	FROM materialization.materializables mzb
+	LEFT JOIN materialization.state ON
+		state.type_id = mzb.type_id AND
+		state.timestamp = mzb.timestamp
+	WHERE state.type_id IS NULL;
+
+ALTER VIEW new_materializables OWNER TO minerva_admin;
+
+GRANT ALL ON materialization.new_materializables TO minerva_admin;
+
+GRANT ALL ON materialization.new_materializables TO minerva_admin;
+GRANT SELECT ON materialization.new_materializables TO minerva;
+GRANT INSERT,DELETE,UPDATE ON materialization.new_materializables TO minerva_writer;
+
+
+-- View 'modified_materializables'
+
+CREATE OR REPLACE VIEW modified_materializables AS
+	SELECT mzb.type_id, mzb.timestamp, mzb.max_modified, mzb.sources
+	FROM materialization.materializables mzb
+	JOIN materialization.state ON
+		state.type_id = mzb.type_id AND
+		state.timestamp = mzb.timestamp AND
+		(state.max_modified < mzb.max_modified OR state.max_modified IS NULL);
+
+ALTER VIEW modified_materializables OWNER TO minerva_admin;
+
+GRANT ALL ON materialization.modified_materializables TO minerva_admin;
+
+GRANT ALL ON materialization.modified_materializables TO minerva_admin;
+GRANT SELECT ON materialization.modified_materializables TO minerva;
+GRANT INSERT,DELETE,UPDATE ON materialization.modified_materializables TO minerva_writer;
+
+
+-- View 'obsolete_state'
+
+CREATE OR REPLACE VIEW obsolete_state AS
+	SELECT state.type_id, state.timestamp
+	FROM materialization.state
+	LEFT JOIN materialization.materializables mzs ON
+		mzs.type_id = state.type_id AND
+		mzs.timestamp = state.timestamp
+	WHERE mzs.type_id IS NULL;
+
+ALTER VIEW obsolete_state OWNER TO minerva_admin;
+
+GRANT ALL ON materialization.obsolete_state TO minerva_admin;
+
+GRANT ALL ON materialization.obsolete_state TO minerva_admin;
+GRANT SELECT ON materialization.obsolete_state TO minerva;
+GRANT INSERT,DELETE,UPDATE ON materialization.obsolete_state TO minerva_writer;
+
+
+-- View 'trend_ext'
+
+CREATE OR REPLACE VIEW trend_ext AS
 SELECT
 	t.id,
 	t.name,

@@ -17,40 +17,115 @@ AS $$
 $$ LANGUAGE SQL STABLE STRICT;
 
 
-CREATE OR REPLACE FUNCTION update_state()
-	RETURNS void
+CREATE OR REPLACE FUNCTION add_new_state()
+	RETURNS integer
 AS $$
-	INSERT INTO materialization.state(type_id, timestamp, max_modified)
-		SELECT mzb.type_id, mzb.timestamp, mzb.max_modified
-		FROM materialization.materializables mzb
-		LEFT JOIN materialization.state ON
-			state.type_id = mzb.type_id AND
-			state.timestamp = mzb.timestamp
-		WHERE state.type_id IS NULL;
+DECLARE
+	count integer;
+BEGIN
+	INSERT INTO materialization.state(type_id, timestamp, max_modified, sources)
+	SELECT type_id, timestamp, max_modified, sources
+	FROM materialization.new_materializables;
 
+	GET DIAGNOSTICS count = ROW_COUNT;
+
+	RETURN count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION update_modified_state()
+	RETURNS integer
+AS $$
+DECLARE
+	count integer;
+BEGIN
 	UPDATE materialization.state
-		SET max_modified = mzb.max_modified
-	FROM materialization.materializables mzb
+	SET max_modified = mzb.max_modified, sources = mzb.sources
+	FROM materialization.modified_materializables mzb
 	WHERE
 		state.type_id = mzb.type_id AND
-		state.timestamp = mzb.timestamp AND
-		(state.max_modified < mzb.max_modified OR state.max_modified IS NULL);
+		state.timestamp = mzb.timestamp;
 
-	WITH obsolete AS (
-		SELECT state.type_id, state.timestamp
-		FROM materialization.state
-		LEFT JOIN materialization.materializables mzs ON
-			mzs.type_id = state.type_id AND
-			mzs.timestamp = state.timestamp
-		WHERE mzs.type_id is null
-	)
+	GET DIAGNOSTICS count = ROW_COUNT;
+
+	RETURN count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION delete_obsolete_state()
+	RETURNS integer
+AS $$
+DECLARE
+	count integer;
+BEGIN
 	DELETE FROM materialization.state
-	USING obsolete
-	WHERE state.type_id = obsolete.type_id AND state.timestamp = obsolete.timestamp;
+	USING materialization.obsolete_state
+	WHERE
+		state.type_id = obsolete_state.type_id AND
+		state.timestamp = obsolete_state.timestamp;
+
+	GET DIAGNOSTICS count = ROW_COUNT;
+
+	RETURN count;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION update_state()
+	RETURNS text
+AS $$
+	SELECT 'added: ' || materialization.add_new_state() || ', updated: ' || materialization.update_modified_state() || ', deleted: ' || materialization.delete_obsolete_state();
 $$ LANGUAGE SQL VOLATILE;
 
 
 CREATE TYPE materialization_result AS (processed_max_modified timestamp with time zone, row_count integer);
+
+
+CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
+	RETURNS void
+AS $$
+	SELECT trend.add_trend_to_trendstore(trendstore, name, datatype)
+	FROM trend.table_columns('trend', trend.to_base_table_name($1)), trend.trendstore
+	WHERE name NOT IN (
+		SELECT name FROM trend.table_columns('trend', trend.to_base_table_name($2))
+	) AND trendstore.id = $2.id;
+$$ LANGUAGE SQL VOLATILE;
+
+COMMENT ON FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
+IS 'Add trends and actual table columns to destination that exist in the source
+trendstore but not yet in the destination.';
+
+
+CREATE OR REPLACE FUNCTION add_missing_trends(materialization.type)
+	RETURNS void
+AS $$
+	SELECT materialization.add_missing_trends(src, dst)
+	FROM trend.trendstore src, trend.trendstore dst
+	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION modify_mismatching_trends(src trend.trendstore, dst trend.trendstore)
+	RETURNS void
+AS $$
+	SELECT trend.modify_trendstore_columns($2.id, array_agg(src_column))
+	FROM trend.table_columns('trend', trend.to_base_table_name($1)) src_column
+	JOIN trend.table_columns('trend', trend.to_base_table_name($2)) dst_column ON
+		src_column.name = dst_column.name
+			AND
+		src_column.datatype <> dst_column.datatype;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION modify_mismatching_trends(materialization.type)
+	RETURNS void
+AS $$
+	SELECT materialization.modify_mismatching_trends(src, dst)
+	FROM trend.trendstore src, trend.trendstore dst
+	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+$$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION materialize(src trend.trendstore, dst trend.trendstore, "timestamp" timestamp with time zone)
@@ -61,37 +136,23 @@ DECLARE
 	table_name character varying;
 	dst_table_name character varying;
 	dst_partition trend.partition;
-	max_modified_query character varying;
+	sources_query character varying;
 	data_query character varying;
 	conn_str character varying;
 	columns_part character varying;
 	column_defs_part character varying;
 	modified timestamp with time zone;
-	processed_max_modified timestamp with time zone;
 	row_count integer;
 	result materialization.materialization_result;
 	replicated_server_conn system.setting;
+	sources_state materialization.source_modified[];
 BEGIN
 	schema_name = 'trend';
 	table_name = trend.to_base_table_name(src);
 	dst_table_name = trend.to_base_table_name(dst);
 
-	PERFORM trend.add_trend_to_trendstore(trendstore, col.name, col.datatype)
-	FROM
-	(
-		SELECT name, datatype
-		FROM trend.table_columns('trend', table_name)
-		WHERE name NOT IN (SELECT name FROM trend.table_columns('trend', dst_table_name))
-	) AS col,
-	trend.trendstore
-	WHERE trendstore.id = dst.id;
-
-	PERFORM trend.modify_trendstore_columns(dst.id, array_agg(src_column))
-	FROM trend.table_columns('trend', table_name) src_column
-	JOIN trend.table_columns('trend', dst_table_name) dst_column ON
-		src_column.name = dst_column.name
-			AND
-		src_column.datatype <> dst_column.datatype;
+	PERFORM add_missing_trends($1, $2);
+	PERFORM modify_mismatching_trends($1, $2);
 
 	dst_partition = trend.attributes_to_partition(dst, trend.timestamp_to_index(dst.partition_size, $3));
 	EXECUTE format('DELETE FROM trend.%I WHERE timestamp = %L', dst_partition.table_name, timestamp);
@@ -101,7 +162,7 @@ BEGIN
 	FROM
 		trend.table_columns(schema_name, table_name);
 
-	max_modified_query = format('SELECT max_modified
+	sources_query = format('SELECT sources
 	FROM materialization.materializables mz
 	JOIN materialization.type ON type.id = mz.type_id
 	WHERE
@@ -116,7 +177,7 @@ BEGIN
 
 	IF replicated_server_conn IS NULL THEN
 		-- Local materialization
-		EXECUTE max_modified_query INTO result.processed_max_modified;
+		EXECUTE sources_query INTO sources_state;
 		EXECUTE format('INSERT INTO trend.%I (%s) %s', dst_partition.table_name, columns_part, data_query);
 	ELSE
 		-- Remote materialization
@@ -127,8 +188,8 @@ BEGIN
 		FROM
 			trend.table_columns(schema_name, table_name) col;
 
-		SELECT max_modified INTO result.processed_max_modified
-		FROM public.dblink(conn_str, max_modified_query) AS r (max_modified timestamp with time zone);
+		SELECT sources INTO sources_state
+		FROM public.dblink(conn_str, sources_query) AS r (sources materialization.source_modified[]);
 
 		EXECUTE format('INSERT INTO trend.%I (%s) SELECT * FROM public.dblink(%L, %L) AS rel (%s)',
 			dst_partition.table_name, columns_part, conn_str, data_query, column_defs_part);
@@ -141,13 +202,13 @@ BEGIN
 		RETURN result;
 	END IF;
 
-	UPDATE materialization.state SET processed_max_modified = result.processed_max_modified
+	UPDATE materialization.state SET processed_sources = sources_state
 	FROM materialization.type
-	WHERE type.id = state.type_id
+	WHERE type.id = state.type_id AND state.timestamp = $3
 	AND type.src_trendstore_id = $1.id
 	AND type.dst_trendstore_id = $2.id;
 
-	PERFORM trend.mark_modified(dst_partition.table_name, "timestamp", result.processed_max_modified);
+	PERFORM trend.mark_modified(dst_partition.table_name, "timestamp");
 
 	RETURN result;
 END;

@@ -21,19 +21,17 @@ from minerva.db.query import Table, Column
 from minerva.directory.helpers_v4 import get_entitytype, get_datasource, \
         create_entitytype, get_entity, create_entity, none_or, \
         get_entitytype_by_id, get_datasource, create_datasource
-
 from minerva.directory.basetypes import DataSource, Entity, EntityType
 import minerva.system.helpers as system_helpers
 from minerva.util import first, identity
 from minerva.util.debug import log_call, log_call_basic
 from minerva.util.tabulate import render_table
+from minerva.storage.trend import schema as trend_schema
 
-from minerva_storage_trend import schema as trend_schema
 
-
-from minerva.transform import helpers
-from minerva.transform.error import ConfigurationError
-from minerva.transform.types import FunctionMapping
+from minerva_transform import helpers
+from minerva_transform.error import ConfigurationError
+from minerva_transform.types import FunctionMapping
 
 
 TIMEZONE = "Europe/Amsterdam"
@@ -142,9 +140,9 @@ def add_function_set(cursor, *args):
     insert_query.execute(cursor, args)
 
     id, = cursor.fetchone()
-    
+
     row = (id,) + args
-    
+
     return helpers.function_set_from_row(cursor, row)
 
 
@@ -157,7 +155,7 @@ def add_function_mapping(cursor, *args):
         "RETURNING id")
 
     cursor.execute(query, args)
-    
+
     id, = cursor.fetchone()
 
     return FunctionMapping.load(id)(cursor)

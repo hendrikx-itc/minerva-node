@@ -1,7 +1,7 @@
-:mod:`minerva.node.config` --- Config Module
+:mod:`minerva_node.config` --- Config Module
 ============================================
 
-.. module:: minerva.node.config
+.. module:: minerva_node.config
 
 .. autoclass:: ConfigError
 

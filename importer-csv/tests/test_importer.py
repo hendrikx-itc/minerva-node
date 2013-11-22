@@ -1,6 +1,6 @@
 from nose.tools import assert_true, assert_false, raises, eq_
 
-from minerva.csvimporter.importer import is_field_empty, check_header, DataError, \
+from minerva_csvimporter.importer import is_field_empty, check_header, DataError, \
     remove_nul
 
 
@@ -13,7 +13,7 @@ def test_is_field_empty():
     name_empty = is_field_empty("name", record)
 
     assert_true(name_empty)
-    
+
     cic_empty = is_field_empty("cic", record)
 
     assert_false(cic_empty)

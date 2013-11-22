@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import pytz
 
 from nose.tools import assert_raises, assert_true, assert_false, assert_equal
-from minerva.transform.helpers import calc_dest_timestamp
+from minerva_transform.helpers import calc_dest_timestamp
 
 def test_dest_timestamp():
     """

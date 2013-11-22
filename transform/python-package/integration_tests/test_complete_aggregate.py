@@ -23,16 +23,16 @@ from minerva.db.query import Column, Insert
 from minerva.db.dbtransaction import DbTransaction, UpdateState
 
 from minerva.node import MinervaContext
-from minerva.transform.types import Transformation
+from minerva_transform.types import Transformation
 from minerva_db import reset_db, with_connection, \
         get_dummy_datasource, get_dummy_entitytype, TIMEZONE, add_function_set, \
         add_function_mapping, render_result
 
 from util import render_datapackage
 
-from minerva_storage_trend.store import CopyFrom
-from minerva_storage_trend.types_v4 import DataPackage, TrendStore3
-from minerva_storage_trend.granularity import create_granularity
+from minerva.storage.trend.store import CopyFrom
+from minerva.storage.trend.types_v4 import DataPackage, TrendStore3
+from minerva.storage.trend.granularity import create_granularity
 
 
 tzinfo = pytz.timezone(TIMEZONE)

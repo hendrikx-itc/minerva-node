@@ -14,14 +14,13 @@ from setuptools import setup
 
 setup(
     name="node",
-    version="3.0.0",
+    version="4.0.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=3.0.0"],
     test_suite="nose.collector",
-    namespace_packages=["minerva"],
-    packages=["minerva", "minerva.node"],
+    packages=["minerva_node"],
     package_dir={"": "src"},
-    package_data={"minerva.node": ["defaults/*"]},
+    package_data={"minerva_node": ["defaults/*"]},
     scripts=["scripts/minerva-node", "scripts/minerva-job-generator",
         "scripts/exec-node-job", "scripts/enqueue-node-job"])
