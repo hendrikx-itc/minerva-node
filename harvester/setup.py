@@ -14,7 +14,7 @@ from setuptools import setup
 
 setup(
     name="minerva-harvesting",
-    version="3.0.0",
+    version="4.0.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=3.0.0", "progressbar"],
