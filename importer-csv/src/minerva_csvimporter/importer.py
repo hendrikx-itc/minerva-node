@@ -16,13 +16,12 @@ import re
 import operator
 from contextlib import closing
 from functools import partial
-from itertools import groupby
 import logging.handlers
 import codecs
 
 import pytz
 
-from minerva.util import compose, identity, k
+from minerva.util import compose, identity, k, grouped_by
 from minerva.storage import get_plugin
 from minerva.directory.helpers import NoSuitablePluginError
 from minerva.directory.helpers_v4 import name_to_datasource, name_to_entitytype
@@ -100,8 +99,6 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
     conn.commit()
 
-    plugin = init_plugin(conn, storagetype)
-
     if identifier_is_alias:
         alias_type_id = get_alias_type_id(conn, alias_type)
         identifier_to_dn = partial(
@@ -129,21 +126,21 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
     if timestampcolumn and timestamp:
         # Use timestamp found in timestamp column, when empty use 'timestamp'
-        get_timestamp = partial(get_value_by_key, timestampcolumn,
-                                default=timestamp)
+        get_timestamp_value = partial(get_value_by_key, timestampcolumn,
+                                      default=timestamp)
 
     elif timestampcolumn:
-        get_timestamp = partial(get_value_by_key, timestampcolumn)
+        get_timestamp_value = partial(get_value_by_key, timestampcolumn)
         is_timestamp_field_not_empty = compose(
             operator.not_, partial(is_field_empty, timestampcolumn))
         record_checks.append(is_timestamp_field_not_empty)
     elif timestamp:
-        get_timestamp = k(timestamp)
+        get_timestamp_value = k(timestamp)
     elif timestamp_from_filename_regex:
         m = re.match(timestamp_from_filename_regex, file_name)
 
         if m:
-            get_timestamp = k(m.group(1))
+            get_timestamp_value = k(m.group(1))
         else:
             raise ConfigurationError(
                 "Could not match timestamp pattern '{}' "
@@ -188,56 +185,71 @@ def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
 
     get_dn_from_record = compose(identifier_to_dn, get_identifier)
 
+    if value_mapping:
+        extract_values = mapping_values_extractor(fields, value_mapping)
+    else:
+        extract_values = plain_values_extractor(fields)
+
+    get_timestamp = compose(parse_ts, get_timestamp_value)
+
+    extract_raw_data_row = raw_data_row_extractor(
+        get_dn_from_record, get_timestamp, extract_values)
+
     records = [record
                for record in read_records(csv_reader, fields, include_row)
                if include_record(record)]
 
-    for timestamp, grouped_records in groupby(records, get_timestamp):
-        ts = parse_ts(timestamp)
+    raw_data_rows = map(extract_raw_data_row, records)
 
-        raw_data_rows = []
+    plugin = init_plugin(conn, storagetype)
 
-        for record in grouped_records:
-            dn = get_dn_from_record(record)
+    if storagetype == "attribute":
+        raw_datapackage = plugin.RawDataPackage(fields, raw_data_rows)
 
-            # apply value mapping
-            if value_mapping:
-                values = [
-                    value_mapping.get(field, {}).get(record[field], record[field])
-                    for field in fields]
-            else:
-                values = [record[field] for field in fields]
+        plugin.store_raw(datasource, raw_datapackage)
 
-            raw_data_row = (dn, values)
+    elif storagetype == "trend":
+        granularity = plugin.create_granularity(granularity)
 
-            raw_data_rows.append(raw_data_row)
+        for timestamp, grouped_rows in grouped_by(raw_data_rows, operator.itemgetter(1)):
+            rows = [
+                (dn, values)
+                for dn, _, values in grouped_rows
+            ]
 
-        if entitytype_name is None or entitytype_name == "":
-            entitytype_name = explode(dn)[-1][0]
-
-            entitytype = name_to_entitytype(cursor, entitytype_name)
-
-        utc_timestamp = ts.astimezone(pytz.utc)
-        utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
-
-        if storagetype == "attribute":
-            raw_datapackage = plugin.RawDataPackage(utc_timestamp_str, fields,
-                                                    raw_data_rows)
-
-            plugin.store_raw(datasource, raw_datapackage)
-
-        elif storagetype == "trend":
-            granularity = plugin.create_granularity(granularity)
+            utc_timestamp = timestamp.astimezone(pytz.utc)
+            utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
 
             raw_datapackage = plugin.RawDataPackage(
-                granularity, utc_timestamp_str, fields, raw_data_rows)
+                granularity, utc_timestamp_str, fields, rows)
 
             plugin.store_raw(datasource, raw_datapackage)
-        else:
-            raise Exception(
-                "Unsupported storage class: {}".format(storagetype))
+    else:
+        raise Exception("Unsupported storage class: {}".format(storagetype))
 
-        conn.commit()
+
+def raw_data_row_extractor(extract_dn, extract_timestamp, extract_values):
+    def fn(record):
+        return extract_dn(record), extract_timestamp(record), extract_values(record)
+
+    return fn
+
+
+def mapping_values_extractor(fields, value_mapping):
+    def fn(record):
+        return [
+            value_mapping.get(field, {}).get(record[field], record[field])
+            for field in fields
+        ]
+
+    return fn
+
+
+def plain_values_extractor(fields):
+    def fn(record):
+        return [record[field] for field in fields]
+
+    return fn
 
 
 def record_passes_checks(checks, record):
@@ -358,15 +370,14 @@ def read_records(csv_reader, fields, include_row):
     missing_fields = [field for field in fields if not field in column_names]
 
     if missing_fields:
-        raise DataError("Field(s) {} not found in header".format(missing_fields))
+        raise DataError(
+            "Field(s) {} not found in header".format(missing_fields))
 
     for line_nr, row in enumerate(csv_reader):
         if include_row(line_nr, column_names, row):
-            yield dict(zip(column_names, (item.decode('utf-8') for item in row)))
-
-
-def make_dn(entitytype_name, name):
-    return "{0}={1}".format(entitytype_name, name)
+            yield dict(
+                zip(column_names, (item.decode('utf-8') for item in row))
+            )
 
 
 def get_alias_type_id(conn, alias_type_name):
