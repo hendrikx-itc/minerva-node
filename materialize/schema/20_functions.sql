@@ -151,8 +151,8 @@ BEGIN
 	table_name = trend.to_base_table_name(src);
 	dst_table_name = trend.to_base_table_name(dst);
 
-	PERFORM add_missing_trends($1, $2);
-	PERFORM modify_mismatching_trends($1, $2);
+	PERFORM materialization.add_missing_trends($1, $2);
+	PERFORM materialization.modify_mismatching_trends($1, $2);
 
 	dst_partition = trend.attributes_to_partition(dst, trend.timestamp_to_index(dst.partition_size, $3));
 	EXECUTE format('DELETE FROM trend.%I WHERE timestamp = %L', dst_partition.table_name, timestamp);
@@ -197,16 +197,16 @@ BEGIN
 
 	GET DIAGNOSTICS result.row_count = ROW_COUNT;
 
-	IF result.row_count = 0 THEN
-		RAISE NOTICE 'NO ROWS materialized FOR materialization of % -> %, %', src::text, dst::text, timestamp;
-		RETURN result;
-	END IF;
-
 	UPDATE materialization.state SET processed_sources = sources_state
 	FROM materialization.type
 	WHERE type.id = state.type_id AND state.timestamp = $3
 	AND type.src_trendstore_id = $1.id
 	AND type.dst_trendstore_id = $2.id;
+
+	IF result.row_count = 0 THEN
+		RAISE NOTICE 'NO ROWS materialized FOR materialization of % -> %, %', src::text, dst::text, timestamp;
+		RETURN result;
+	END IF;
 
 	PERFORM trend.mark_modified(dst_partition.table_name, "timestamp");
 

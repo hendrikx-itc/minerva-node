@@ -14,10 +14,10 @@ from setuptools import setup
 
 setup(
     name="minerva-harvesting",
-    version="4.4.0",
+    version="4.5.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
-    install_requires=["minerva>=3.0.0", "progressbar"],
+    install_requires=["minerva>=4.5.0", "progressbar"],
     test_suite="nose.collector",
     packages=["minerva_harvesting"],
     package_dir={"": "src"},

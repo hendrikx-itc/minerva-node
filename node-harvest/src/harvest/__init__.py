@@ -165,7 +165,7 @@ def dispatch_raw_and_mark_existing(store_raw, filter_types, mark_existing, raw_d
     existence marking
     :param mark_existing: a function that takes arguments (dns, timestamp)
     """
-    dns = [dn for dn, _values in raw_datapackage.rows if entitytype_from_dn(dn) in
+    dns = [dn for dn, _timestamp, _values in raw_datapackage.rows if entitytype_from_dn(dn) in
             filter_types]
 
     mark_existing(dns, datetime.now())

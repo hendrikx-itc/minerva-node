@@ -1,9 +1,7 @@
-import logging
-import StringIO
-
 from contextlib import closing
 
-from minerva.db.util import *
+from minerva.db.util import create_copy_from_file, create_copy_from_query, \
+    exec_sql, create_unique_index
 
 TMP_TABLE_NAME = "tmp_existence"
 
@@ -119,8 +117,6 @@ def update_existing(conn, tmp_table_new):
 
     create_existence_temp_table(conn, tmp_table_intermediate)
 
-    logging.info("copy no longer existing records to '{}'".format(tmp_table_intermediate))
-
     with closing(conn.cursor()) as cursor:
         cursor.execute(get_entitytype_ids.format(tmp_table_new))
         entitytype_ids = [entitytype_id for entitytype_id, in cursor.fetchall()]
@@ -133,3 +129,14 @@ def update_existing(conn, tmp_table_new):
         cursor.execute(add_new_query.format(tmp_table_new))
 
     conn.commit()
+
+
+def create_temp_table(conn, name, columns):
+    columns_part = ",".join(columns)
+
+    sql = (
+        "CREATE TEMP TABLE {} ({}) "
+        "ON COMMIT DROP"
+    ).format(name, columns_part)
+
+    exec_sql(conn, sql)

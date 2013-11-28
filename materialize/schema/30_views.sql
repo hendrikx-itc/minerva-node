@@ -106,7 +106,7 @@ CREATE OR REPLACE VIEW modified_materializables AS
 	JOIN materialization.state ON
 		state.type_id = mzb.type_id AND
 		state.timestamp = mzb.timestamp AND
-		(state.max_modified < mzb.max_modified OR state.max_modified IS NULL);
+		(state.sources <> mzb.sources OR state.sources IS NULL);
 
 ALTER VIEW modified_materializables OWNER TO minerva_admin;
 
