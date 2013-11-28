@@ -119,8 +119,6 @@ def update_existing(conn, tmp_table_new):
 
     create_existence_temp_table(conn, tmp_table_intermediate)
 
-    logging.info("copy no longer existing records to '{}'".format(tmp_table_intermediate))
-
     with closing(conn.cursor()) as cursor:
         cursor.execute(get_entitytype_ids.format(tmp_table_new))
         entitytype_ids = [entitytype_id for entitytype_id, in cursor.fetchall()]
