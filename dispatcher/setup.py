@@ -13,9 +13,9 @@ this software.
 from setuptools import setup
 
 setup(name="dispatcher",
-    version="4.5.0",
+    version="4.5.2",
     install_requires=["configobj",
-        "minerva>=4.5.0", "pyinotify"],
+        "minerva>=4.5.3", "pyinotify"],
     test_suite="nose.collector",
     package_data={"minerva_dispatcher": ["defaults/*"]},
     packages=["minerva_dispatcher"],
