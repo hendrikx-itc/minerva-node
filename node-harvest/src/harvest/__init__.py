@@ -19,11 +19,11 @@ import traceback
 from minerva.util import compose
 from minerva.directory.helpers import get_datasource, NoSuchDataSourceError
 from minerva.directory.distinguishedname import explode
+from harvest.directory.existence import Existence
 
 from minerva_node.error import JobError
 
 from harvest.plugins import ENTRYPOINT, load_plugins
-from harvest.existence import Existence
 
 
 DEFAULT_ACTION = {"name": "remove", "args": []}

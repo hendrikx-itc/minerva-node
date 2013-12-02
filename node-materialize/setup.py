@@ -16,12 +16,12 @@ __author__ = "Hendrikx ITC"
 
 setup(
     name="materialize",
-    version="4.5.0",
+    version="4.5.2",
     description=__doc__,
     author=__author__,
     author_email="info@hendrikx-itc.nl",
     url = "http://hendrikx-itc.nl",
-    install_requires=["minerva>=4.5.0"],
+    install_requires=["minerva>=4.5.3"],
     packages=["minerva_node_materialize"],
     package_dir={"": "src"},
     entry_points= {"node.plugins": ["materialize = minerva_node_materialize:MaterializePlugin"]})

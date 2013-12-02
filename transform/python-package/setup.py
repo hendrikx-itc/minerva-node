@@ -14,10 +14,10 @@ from setuptools import setup
 
 setup(
     name="transforming",
-    version="4.5.0",
+    version="4.5.2",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
-    install_requires=["minerva>=4.5"],
+    install_requires=["minerva>=4.5.3"],
     test_suite="nose.collector",
     packages=["minerva_transform"],
     package_dir={"": "src"},
