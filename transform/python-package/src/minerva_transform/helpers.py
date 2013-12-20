@@ -72,7 +72,8 @@ def get_all_function_sets(conn):
             "source_datasource_ids, source_entitytype_id, source_granularity, "
             "dest_datasource_id, dest_entitytype_id, dest_granularity, "
             "filter_sub_query, group_by, relation_type_id, enabled "
-        "FROM {0}.function_set").format(SCHEMA)
+        "FROM {0}.function_set "
+        "WHERE enabled").format(SCHEMA)
 
     with closing(conn.cursor()) as cursor:
         cursor.execute(query)
