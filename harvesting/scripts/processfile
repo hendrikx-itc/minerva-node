@@ -245,7 +245,7 @@ def render_as_table(trend_names, rows):
     column_align = ">" * len(column_names)
     column_sizes = ["max"] * len(column_names)
 
-    rows = [[dn] + values for dn, values in rows]
+    rows = [row[:-1] + tuple(row[-1]) for row in rows]
 
     table = render_table(column_names, column_align, column_sizes, rows)
 
