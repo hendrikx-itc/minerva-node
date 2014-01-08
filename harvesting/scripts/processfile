@@ -214,13 +214,15 @@ def filter_package(entity_filter, trend_filter, package):
 
         filtered_rows = []
 
-        for dn, values in entity_filtered_rows:
+        for row in entity_filtered_rows:
+            values = row[-1]
+
             trend_filtered_values = [v
                                      for include, v in
                                      zip(trend_filter_map, values)
                                      if include]
 
-            trend_filtered_row = dn, trend_filtered_values
+            trend_filtered_row = row[:-1] + (trend_filtered_values,)
 
             filtered_rows.append(trend_filtered_row)
     else:
