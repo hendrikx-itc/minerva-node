@@ -1,3 +1,1 @@
-scripts/noded   /usr/bin
-conf/noded.conf /etc
 src/minerva_node/defaults/node.conf /etc/minerva
