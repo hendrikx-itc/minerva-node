@@ -28,6 +28,8 @@ from minerva.util.tabulate import render_table
 from minerva.instance import MinervaInstance
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.storage import get_plugin
+import minerva.storage.trend.datapackage
+import minerva.storage.attribute.datapackage
 
 from minerva_harvesting.fileprocessor import process_file
 from minerva_harvesting.plugins import iter_entry_points, \
@@ -39,6 +41,11 @@ script_name = os.path.basename(__file__)
 config_file = "{}.conf".format(script_name)
 configfile_path = os.path.join("/etc/minerva/", config_file)
 
+package_constructors = {
+    "trend": minerva.storage.trend.datapackage.DataPackage,
+    "attribute": minerva.storage.attribute.datapackage.DataPackage
+}
+
 
 def main():
     args = create_argparser().parse_args()
@@ -49,12 +56,23 @@ def main():
     if args.verbose:
         logging.root.addHandler(logging.StreamHandler())
 
-    handle_package = partial(filter_package, args.dn_filter,
-                             args.trend_filter)
-    handle_package = compose(handle_package, make_tuple)
+    create_package = package_constructors[args.plugin.storagetype()]
+
+    filter_package = package_data_filters[args.plugin.storagetype()]
+
+    handle_package = compose(
+        partial(filter_package, args.dn_filter, args.column_filter),
+        create_package
+    )
 
     if args.debug:
+        package_renderer = package_renderers[args.plugin.storagetype()]
+
+        show_package = tee(package_renderer)
+
         handle_package = compose(show_package, handle_package)
+
+    handle_package = compose(make_tuple, handle_package)
 
     statistics = Statistics()
 
@@ -150,10 +168,10 @@ def create_argparser():
         "--debug", action="store_true", dest="debug",
         default=False, help="produce debug output")
 
-    parser.add_argument("--dn-filter", type=create_dn_filter,
+    parser.add_argument("--dn-filter", type=create_regex_filter,
                         default=k(True), help="filter by distinguished name")
 
-    parser.add_argument("--trend-filter", type=create_trend_filter,
+    parser.add_argument("--column-filter", type=create_regex_filter,
                         default=k(True), help="filter by trend name")
 
     parser.add_argument(
@@ -171,14 +189,7 @@ def create_argparser():
     return parser
 
 
-def create_dn_filter(x):
-    if x:
-        return re.compile(x).match
-    else:
-        return k(True)
-
-
-def create_trend_filter(x):
+def create_regex_filter(x):
     if x:
         return re.compile(x).match
     else:
@@ -200,54 +211,105 @@ class Statistics(object):
         ]
 
 
-def filter_package(entity_filter, trend_filter, package):
-    trend_names, rows = package[-2:]
+def filter_trend_package(entity_filter, trend_filter, package):
+    filtered_trend_names = filter(trend_filter, package.trend_names)
 
-    filtered_trend_names = filter(trend_filter, trend_names)
+    trend_filter_map = map(trend_filter, package.trend_names)
 
-    if len(filtered_trend_names) > 0:
-        trend_filter_map = map(trend_filter, trend_names)
+    filter_rows = compose(entity_filter, itemgetter(0))
 
-        filter_rows = compose(entity_filter, itemgetter(0))
+    entity_filtered_rows = filter(filter_rows, package.rows)
 
-        entity_filtered_rows = filter(filter_rows, rows)
+    filtered_rows = []
 
-        filtered_rows = []
+    for row in entity_filtered_rows:
+        values = row[-1]
 
-        for dn, values in entity_filtered_rows:
-            trend_filtered_values = [v
-                                     for include, v in
-                                     zip(trend_filter_map, values)
-                                     if include]
+        trend_filtered_values = [v
+                                 for include, v in
+                                 zip(trend_filter_map, values)
+                                 if include]
 
-            trend_filtered_row = dn, trend_filtered_values
+        trend_filtered_row = row[:-1] + (trend_filtered_values,)
 
-            filtered_rows.append(trend_filtered_row)
-    else:
-        filtered_rows = []
+        filtered_rows.append(trend_filtered_row)
 
-    return package[:-2] + (filtered_trend_names, filtered_rows)
-
-
-def show_package(package):
-    trend_names, rows = package[-2:]
-
-    if rows:
-        render_as_table(trend_names, rows)
-
-    return package
+    return minerva.storage.trend.datapackage.DataPackage(
+        package.granularity, package.timestamp, filtered_trend_names,
+        filtered_rows)
 
 
-def render_as_table(trend_names, rows):
-    column_names = ["dn"] + list(trend_names)
+def filter_attribute_package(entity_filter, attribute_filter, package):
+    filtered_attribute_names = filter(attribute_filter, package.attribute_names)
+
+    attribute_filter_map = map(attribute_filter, package.attribute_names)
+
+    filter_rows = compose(entity_filter, itemgetter(0))
+
+    entity_filtered_rows = filter(filter_rows, package.rows)
+
+    filtered_rows = []
+
+    for row in entity_filtered_rows:
+        values = row[-1]
+
+        attribute_filtered_values = [v
+                                 for include, v in
+                                 zip(attribute_filter_map, values)
+                                 if include]
+
+        attribute_filtered_row = row[:-1] + (attribute_filtered_values,)
+
+        filtered_rows.append(attribute_filtered_row)
+
+    return minerva.storage.attribute.datapackage.DataPackage(
+        filtered_attribute_names,
+        filtered_rows)
+
+
+package_data_filters = {
+    "trend": filter_trend_package,
+    "attribute": filter_attribute_package
+}
+
+
+def tee(fn):
+    def wrapper(x):
+        fn(x)
+
+        return x
+
+    return wrapper
+
+
+def render_as_trend_table(package):
+    column_names = ["dn"] + list(package.trend_names)
     column_align = ">" * len(column_names)
     column_sizes = ["max"] * len(column_names)
 
-    rows = [[dn] + values for dn, values in rows]
+    rows = [row[:-1] + tuple(row[-1]) for row in package.rows]
 
     table = render_table(column_names, column_align, column_sizes, rows)
 
     print(unlines(table))
+
+
+def render_as_attribute_table(package):
+    column_names = ["dn", "timestamp"] + list(package.attribute_names)
+    column_align = ">" * len(column_names)
+    column_sizes = ["max"] * len(column_names)
+
+    rows = [row[:-1] + tuple(row[-1]) for row in package.rows]
+
+    table = render_table(column_names, column_align, column_sizes, rows)
+
+    print(unlines(table))
+
+
+package_renderers = {
+    "attribute": render_as_attribute_table,
+    "trend": render_as_trend_table
+}
 
 
 def load_default_config():
