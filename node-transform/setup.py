@@ -16,7 +16,7 @@ __author__ = "Hendrikx ITC"
 
 setup(
     name="transform",
-    version="4.5.5",
+    version="4.5.6",
     description=__doc__,
     author=__author__,
     author_email="a.j.n.blokland@hendrikx-itc.nl",
