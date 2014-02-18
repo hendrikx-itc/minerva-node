@@ -433,7 +433,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION create_jobs_limited(tag varchar, job_limit integer)
 	RETURNS integer
 AS $$
-	SELECT create_jobs($1, $2);
+	SELECT materialization.create_jobs($1, $2);
 $$ LANGUAGE SQL;
 
 COMMENT ON FUNCTION create_jobs_limited(tag varchar, job_limit integer)
