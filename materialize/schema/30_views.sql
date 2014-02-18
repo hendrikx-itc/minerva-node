@@ -20,7 +20,7 @@ CREATE OR REPLACE VIEW tagged_runnable_materializations AS
 		LEFT JOIN system.job j ON j.id = state.job_id
 		WHERE
 			(sources <> processed_sources OR processed_sources IS NULL)
-			AND (state.job_id IS NULL OR NOT j.state IN ('queued', 'running'))
+			AND (j.id IS NULL OR NOT j.state IN ('queued', 'running'))
 			AND materialization.runnable(mt, timestamp, max_modified)
 		ORDER BY ts.granularity ASC, timestamp DESC;
 
