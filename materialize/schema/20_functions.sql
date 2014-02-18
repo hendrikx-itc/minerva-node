@@ -386,7 +386,7 @@ BEGIN
 	replicated_server_conn = system.get_setting('replicated_server_conn');
 
 	IF replicated_server_conn IS NULL THEN
-		RETURN QUERY SELECT type_id, timestamp
+		RETURN QUERY SELECT trm.type_id, trm.timestamp
 		FROM materialization.tagged_runnable_materializations trm
 		WHERE trm.tag = $1;
 	ELSE
