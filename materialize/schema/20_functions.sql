@@ -375,35 +375,26 @@ AS $$
 $$ LANGUAGE SQL STABLE;
 
 
-CREATE OR REPLACE FUNCTION create_jobs_limited(tag varchar, job_limit integer)
-	RETURNS integer
+CREATE OR REPLACE FUNCTION runnable_materializations(tag varchar)
+	RETURNS TABLE (type_id integer, "timestamp" timestamp with time zone)
 AS $$
 DECLARE
-	created_jobs integer := 0;
-	new_job_count integer;
 	runnable_materializations_query text;
 	conn_str text;
 	replicated_server_conn system.setting;
 BEGIN
-	new_job_count = materialization.open_job_slots(job_limit);
-
 	replicated_server_conn = system.get_setting('replicated_server_conn');
 
 	IF replicated_server_conn IS NULL THEN
-		SELECT COUNT(materialization.create_job(type_id, timestamp)) INTO created_jobs
-		FROM (
-			SELECT type_id, timestamp
-			FROM materialization.tagged_runnable_materializations trm
-			WHERE trm.tag = $1
-			LIMIT new_job_count
-		) mzs;
+		RETURN QUERY SELECT type_id, timestamp
+		FROM materialization.tagged_runnable_materializations trm
+		WHERE trm.tag = $1;
 	ELSE
 		runnable_materializations_query = format('SELECT type_id, timestamp
 			FROM materialization.tagged_runnable_materializations
-			WHERE tag = ''%s''
-			LIMIT %s', tag, new_job_count);
+			WHERE tag = %L', tag);
 
-		SELECT COUNT(materialization.create_job(replicated_state.type_id, replicated_state.timestamp)) INTO created_jobs
+		RETURN QUERY SELECT replicated_state.type_id, replicated_state.timestamp
 		FROM public.dblink(replicated_server_conn.value, runnable_materializations_query)
 			AS replicated_state(type_id integer, "timestamp" timestamp with time zone)
 		JOIN materialization.tagged_runnable_materializations rj ON
@@ -411,10 +402,42 @@ BEGIN
 				AND
 			replicated_state.timestamp = rj.timestamp;
 	END IF;
-
-	RETURN created_jobs;
 END;
 $$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION runnable_materializations(tag varchar)
+IS 'Return table with all combinations (type_id, timestamp) that are ready to
+run. This includes the check between the master and slave states.';
+
+
+CREATE OR REPLACE FUNCTION create_jobs(tag varchar, job_limit integer)
+	RETURNS integer
+AS $$
+	SELECT COUNT(materialization.create_job(type_id, timestamp))::integer
+	FROM (
+		SELECT type_id, timestamp
+		FROM materialization.runnable_materializations($1)
+		LIMIT materialization.open_job_slots($2)
+	) mzs;
+$$ LANGUAGE SQL;
+
+
+CREATE OR REPLACE FUNCTION create_jobs(tag varchar)
+	RETURNS integer
+AS $$
+	SELECT COUNT(materialization.create_job(type_id, timestamp))::integer
+	FROM materialization.runnable_materializations($1);
+$$ LANGUAGE SQL;
+
+
+CREATE OR REPLACE FUNCTION create_jobs_limited(tag varchar, job_limit integer)
+	RETURNS integer
+AS $$
+	SELECT create_jobs($1, $2);
+$$ LANGUAGE SQL;
+
+COMMENT ON FUNCTION create_jobs_limited(tag varchar, job_limit integer)
+IS 'Deprecated function that just calls the overloaded create_jobs function.';
 
 
 CREATE OR REPLACE FUNCTION tag(tag_name character varying, type_id integer)
@@ -463,6 +486,22 @@ COMMENT ON FUNCTION reset(materialization.type)
 IS 'Remove data (partitions) resulting from this materialization and the
 corresponding state records, so materialization for all timestamps can be done
 again';
+
+
+CREATE OR REPLACE FUNCTION reset(type_id integer, timestamp with time zone)
+	RETURNS materialization.state 
+AS $$
+	UPDATE materialization.state SET processed_sources = NULL
+	WHERE type_id = $1 AND timestamp = $2
+	RETURNING *;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION reset(materialization.type, timestamp with time zone)
+	RETURNS materialization.state 
+AS $$
+	SELECT reset($1.id, $2);
+$$ LANGUAGE SQL VOLATILE;
 
 
 CREATE OR REPLACE FUNCTION enable(materialization.type)
