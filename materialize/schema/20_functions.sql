@@ -259,8 +259,9 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE OR REPLACE FUNCTION define(src_trendstore_id integer, dst_trendstore_id integer)
 	RETURNS materialization.type
 AS $$
-	INSERT INTO materialization.type (src_trendstore_id, dst_trendstore_id)
-	VALUES ($1, $2)
+	INSERT INTO materialization.type (src_trendstore_id, dst_trendstore_id, processing_delay, stability_delay)
+	SELECT $1, $2, materialization.default_processing_delay(granularity), materialization.default_stability_delay(granularity)
+	FROM trend.trendstore WHERE id = $2
 	RETURNING type;
 $$ LANGUAGE SQL VOLATILE;
 
@@ -357,15 +358,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION runnable(type materialization.type, "timestamp" timestamp with time zone, max_modified timestamp with time zone)
 	RETURNS boolean
 AS $$
-	SELECT $1.enabled AND CASE
-		WHEN trendstore.granularity = '1800' OR trendstore.granularity = '900' OR trendstore.granularity = '300' THEN
-			$2 < now() AND $3 < now() - interval '180 seconds'
-		WHEN trendstore.granularity = '3600' THEN
-			$2 < now() - interval '15 minutes' AND $3 < now() - interval '5 minutes'
-		ELSE
-			$2 < now() - interval '3 hours' AND $3 < now() - interval '15 minutes'
-		END
-	FROM trend.trendstore WHERE id = $1.dst_trendstore_id;
+	SELECT $1.enabled AND materialization.source_data_ready($1, $2, $3);
 $$ LANGUAGE SQL IMMUTABLE;
 
 
@@ -543,4 +536,41 @@ AS $$
 		materialization.trendstore_ids($1.sources) @> materialization.trendstore_ids($1.processed_sources)
 	)
 	OR $1.processed_sources IS NULL;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION default_processing_delay(granularity character varying)
+	RETURNS interval
+AS $$
+	SELECT CASE
+		WHEN $1 = '1800' OR $1 = '900' OR $1 = '300' THEN
+			interval '0 seconds'
+		WHEN $1 = '3600' THEN
+			interval '15 minutes'
+		ELSE
+			interval '3 hours'
+		END;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION default_stability_delay(granularity character varying)
+	RETURNS interval
+AS $$
+	SELECT CASE
+		WHEN $1 = '1800' OR $1 = '900' OR $1 = '300' THEN
+			interval '180 seconds'
+		WHEN $1 = '3600' THEN
+			interval '5 minutes'
+		ELSE
+			interval '15 minutes'
+		END;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION source_data_ready(type materialization.type, "timestamp" timestamp with time zone, max_modified timestamp with time zone)
+	RETURNS boolean
+AS $$
+	SELECT
+		$2 < now() - $1.processing_delay AND
+		$3 < now() - $1.stability_delay;
 $$ LANGUAGE SQL STABLE;

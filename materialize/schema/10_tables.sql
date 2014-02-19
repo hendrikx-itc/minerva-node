@@ -20,6 +20,8 @@ CREATE TABLE type (
 	id serial NOT NULL,
 	src_trendstore_id integer NOT NULL,
 	dst_trendstore_id integer NOT NULL,
+	processing_delay interval NOT NULL,
+	stability_delay interval NOT NULL,
 	enabled boolean NOT NULL DEFAULT FALSE
 );
 
