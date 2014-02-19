@@ -23,8 +23,8 @@ AS $$
 DECLARE
 	count integer;
 BEGIN
-	INSERT INTO materialization.state(type_id, timestamp, max_modified, sources)
-	SELECT type_id, timestamp, max_modified, sources
+	INSERT INTO materialization.state(type_id, timestamp, max_modified, sources, source_states)
+	SELECT type_id, timestamp, max_modified, sources, source_states
 	FROM materialization.new_materializables;
 
 	GET DIAGNOSTICS count = ROW_COUNT;
@@ -41,7 +41,10 @@ DECLARE
 	count integer;
 BEGIN
 	UPDATE materialization.state
-	SET max_modified = mzb.max_modified, sources = mzb.sources
+	SET
+		max_modified = mzb.max_modified,
+		sources = mzb.sources,
+		source_states = mzb.source_states
 	FROM materialization.modified_materializables mzb
 	WHERE
 		state.type_id = mzb.type_id AND
@@ -516,3 +519,28 @@ CREATE OR REPLACE FUNCTION disable(materialization.type)
 AS $$
 	UPDATE materialization.type SET enabled = false WHERE id = $1.id RETURNING type;
 $$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION trendstore_ids(materialization.source_modified[])
+	RETURNS integer[]
+AS $$
+	SELECT array_agg(trendstore_id) FROM unnest($1);
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION fragments(materialization.source_fragment_state[])
+	RETURNS materialization.source_fragment[]
+AS $$
+	SELECT array_agg(fragment) FROM unnest($1);
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION requires_update(materialization.state)
+	RETURNS boolean
+AS $$
+	SELECT (
+		$1.sources <> $1.processed_sources AND
+		materialization.trendstore_ids($1.sources) @> materialization.trendstore_ids($1.processed_sources)
+	)
+	OR $1.processed_sources IS NULL;
+$$ LANGUAGE SQL STABLE;
