@@ -487,7 +487,7 @@ again';
 CREATE OR REPLACE FUNCTION reset(type_id integer, timestamp with time zone)
 	RETURNS materialization.state 
 AS $$
-	UPDATE materialization.state SET processed_sources = NULL
+	UPDATE materialization.state SET processed_states = NULL
 	WHERE type_id = $1 AND timestamp = $2
 	RETURNING *;
 $$ LANGUAGE SQL VOLATILE;
@@ -535,7 +535,7 @@ AS $$
 		$1.source_states <> $1.processed_states AND
 		materialization.fragments($1.source_states) @> materialization.fragments($1.processed_states)
 	)
-	OR $1.processed_sources IS NULL;
+	OR $1.processed_states IS NULL;
 $$ LANGUAGE SQL STABLE;
 
 
