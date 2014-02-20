@@ -23,8 +23,8 @@ AS $$
 DECLARE
 	count integer;
 BEGIN
-	INSERT INTO materialization.state(type_id, timestamp, max_modified, sources, source_states)
-	SELECT type_id, timestamp, max_modified, sources, source_states
+	INSERT INTO materialization.state(type_id, timestamp, max_modified, source_states)
+	SELECT type_id, timestamp, max_modified, source_states
 	FROM materialization.new_materializables;
 
 	GET DIAGNOSTICS count = ROW_COUNT;
@@ -43,7 +43,6 @@ BEGIN
 	UPDATE materialization.state
 	SET
 		max_modified = mzb.max_modified,
-		sources = mzb.sources,
 		source_states = mzb.source_states
 	FROM materialization.modified_materializables mzb
 	WHERE

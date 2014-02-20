@@ -50,14 +50,6 @@ CREATE UNIQUE INDEX ix_materialization_type_uniqueness
 
 -- table state
 
-CREATE TYPE source_modified AS (
-	trendstore_id integer,
-	modified timestamp with time zone
-);
-
-COMMENT ON TYPE source_modified IS 'Can be used to store the max modified of a specific trendstore.';
-
-
 CREATE TYPE source_fragment AS (
 	trendstore_id integer,
 	timestamp timestamp with time zone
@@ -76,8 +68,6 @@ CREATE TABLE state (
 	type_id integer NOT NULL,
 	timestamp timestamp with time zone NOT NULL,
 	max_modified timestamp with time zone NOT NULL,
-	sources source_modified[] DEFAULT NULL,
-	processed_sources source_modified[] DEFAULT NULL,
 	source_states source_fragment_state[] DEFAULT NULL,
 	processed_states source_fragment_state[] DEFAULT NULL,
 	job_id integer DEFAULT NULL
