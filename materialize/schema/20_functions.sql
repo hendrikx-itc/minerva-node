@@ -470,14 +470,25 @@ COMMENT ON FUNCTION untag(materialization.type)
 IS 'Remove all tags from the materialization';
 
 
-CREATE OR REPLACE FUNCTION reset(materialization.type)
+CREATE OR REPLACE FUNCTION reset(type_id integer)
+	RETURNS SETOF materialization.state
+AS $$
+	UPDATE materialization.state SET processed_states = NULL
+	WHERE
+		type_id = $1 AND
+		source_states = processed_states
+	RETURNING *;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION reset_hard(materialization.type)
 	RETURNS void
 AS $$
 	DELETE FROM trend.partition WHERE trendstore_id = $1.dst_trendstore_id;
 	DELETE FROM materialization.state WHERE type_id = $1.id;
 $$ LANGUAGE SQL VOLATILE;
 
-COMMENT ON FUNCTION reset(materialization.type)
+COMMENT ON FUNCTION reset_hard(materialization.type)
 IS 'Remove data (partitions) resulting from this materialization and the
 corresponding state records, so materialization for all timestamps can be done
 again';
