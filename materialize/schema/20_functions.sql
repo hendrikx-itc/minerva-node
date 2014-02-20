@@ -148,7 +148,7 @@ DECLARE
 	row_count integer;
 	result materialization.materialization_result;
 	replicated_server_conn system.setting;
-	sources_state materialization.source_modified[];
+	tmp_source_states materialization.source_fragment_state[];
 BEGIN
 	schema_name = 'trend';
 	table_name = trend.to_base_table_name(src);
@@ -165,7 +165,7 @@ BEGIN
 	FROM
 		trend.table_columns(schema_name, table_name);
 
-	sources_query = format('SELECT sources
+	sources_query = format('SELECT source_states
 	FROM materialization.materializables mz
 	JOIN materialization.type ON type.id = mz.type_id
 	WHERE
@@ -180,7 +180,7 @@ BEGIN
 
 	IF replicated_server_conn IS NULL THEN
 		-- Local materialization
-		EXECUTE sources_query INTO sources_state;
+		EXECUTE sources_query INTO tmp_source_states;
 		EXECUTE format('INSERT INTO trend.%I (%s) %s', dst_partition.table_name, columns_part, data_query);
 	ELSE
 		-- Remote materialization
@@ -191,8 +191,8 @@ BEGIN
 		FROM
 			trend.table_columns(schema_name, table_name) col;
 
-		SELECT sources INTO sources_state
-		FROM public.dblink(conn_str, sources_query) AS r (sources materialization.source_modified[]);
+		SELECT sources INTO tmp_source_states
+		FROM public.dblink(conn_str, sources_query) AS r (sources materialization.source_fragment_state[]);
 
 		EXECUTE format('INSERT INTO trend.%I (%s) SELECT * FROM public.dblink(%L, %L) AS rel (%s)',
 			dst_partition.table_name, columns_part, conn_str, data_query, column_defs_part);
@@ -200,7 +200,7 @@ BEGIN
 
 	GET DIAGNOSTICS result.row_count = ROW_COUNT;
 
-	UPDATE materialization.state SET processed_sources = sources_state
+	UPDATE materialization.state SET processed_states = tmp_source_states
 	FROM materialization.type
 	WHERE type.id = state.type_id AND state.timestamp = $3
 	AND type.src_trendstore_id = $1.id
@@ -532,8 +532,8 @@ CREATE OR REPLACE FUNCTION requires_update(materialization.state)
 	RETURNS boolean
 AS $$
 	SELECT (
-		$1.sources <> $1.processed_sources AND
-		materialization.trendstore_ids($1.sources) @> materialization.trendstore_ids($1.processed_sources)
+		$1.source_states <> $1.processed_states AND
+		materialization.fragments($1.source_states) @> materialization.fragments($1.processed_states)
 	)
 	OR $1.processed_sources IS NULL;
 $$ LANGUAGE SQL STABLE;
