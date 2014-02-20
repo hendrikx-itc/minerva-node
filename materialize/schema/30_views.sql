@@ -67,9 +67,6 @@ CREATE OR REPLACE VIEW materializables AS
 		timestamp,
 		max(modified) AS max_modified,
 		array_agg(
-			(trendstore_id, modified)::source_modified ORDER BY trendstore_id, modified
-		) AS sources,
-		array_agg(
 			(
 				(trendstore_id, src_timestamp)::materialization.source_fragment,
 				modified
@@ -95,7 +92,6 @@ CREATE OR REPLACE VIEW new_materializables AS
 		mzb.type_id,
 		mzb.timestamp,
 		mzb.max_modified,
-		mzb.sources,
 		mzb.source_states
 	FROM materialization.materializables mzb
 	LEFT JOIN materialization.state ON
@@ -119,7 +115,6 @@ CREATE OR REPLACE VIEW modified_materializables AS
 		mzb.type_id,
 		mzb.timestamp,
 		mzb.max_modified,
-		mzb.sources,
 		mzb.source_states
 	FROM materialization.materializables mzb
 	JOIN materialization.state ON
