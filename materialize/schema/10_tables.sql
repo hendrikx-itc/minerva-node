@@ -22,6 +22,7 @@ CREATE TABLE type (
 	dst_trendstore_id integer NOT NULL,
 	processing_delay interval NOT NULL,
 	stability_delay interval NOT NULL,
+	reprocessing_period interval NOT NULL,
 	enabled boolean NOT NULL DEFAULT FALSE
 );
 

@@ -357,7 +357,10 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION runnable(type materialization.type, "timestamp" timestamp with time zone, max_modified timestamp with time zone)
 	RETURNS boolean
 AS $$
-	SELECT $1.enabled AND materialization.source_data_ready($1, $2, $3);
+	SELECT
+		$1.enabled AND
+		materialization.source_data_ready($1, $2, $3) AND
+		($1.reprocessing_period IS NULL OR now() - $2 < $1.reprocessing_period);
 $$ LANGUAGE SQL IMMUTABLE;
 
 
