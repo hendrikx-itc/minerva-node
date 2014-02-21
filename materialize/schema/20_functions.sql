@@ -527,13 +527,6 @@ AS $$
 $$ LANGUAGE SQL VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION trendstore_ids(materialization.source_modified[])
-	RETURNS integer[]
-AS $$
-	SELECT array_agg(trendstore_id) FROM unnest($1);
-$$ LANGUAGE SQL STABLE;
-
-
 CREATE OR REPLACE FUNCTION fragments(materialization.source_fragment_state[])
 	RETURNS materialization.source_fragment[]
 AS $$
