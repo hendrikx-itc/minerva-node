@@ -580,3 +580,71 @@ AS $$
 		$2 < now() - $1.processing_delay AND
 		$3 < now() - $1.stability_delay;
 $$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(trend.trendstore, level integer)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+-- Stub to allow recursive definition.
+	SELECT $1, $2;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION direct_view_dependencies(trend.trendstore)
+	RETURNS SETOF trend.trendstore
+AS $$
+	SELECT trendstore
+	FROM trend.trendstore
+	JOIN trend.view_trendstore_link vtl ON vtl.trendstore_id = trendstore.id
+	JOIN trend.view ON view.id = vtl.view_id
+	WHERE view.trendstore_id = $1.id;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION direct_table_dependencies(trend.trendstore)
+	RETURNS SETOF trend.trendstore
+AS $$
+	SELECT trendstore
+	FROM trend.trendstore
+	JOIN materialization.type ON type.src_trendstore_id = trendstore.id
+	WHERE dst_trendstore_id = $1.id;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION direct_dependencies(trend.trendstore)
+	RETURNS SETOF trend.trendstore
+AS $$
+	SELECT
+	CASE WHEN $1.type = 'view' THEN
+		materialization.direct_view_dependencies($1)
+	WHEN $1.type = 'table' THEN
+		materialization.direct_table_dependencies($1)
+	END;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(trend.trendstore, level integer)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+	SELECT (d.dependencies).* FROM (
+		SELECT materialization.dependencies(dependency, $2 + 1)
+		FROM materialization.direct_dependencies($1) dependency
+	) d
+	UNION ALL
+	SELECT dependency, $2
+	FROM materialization.direct_dependencies($1) dependency;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(trend.trendstore)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+	SELECT materialization.dependencies($1, 1);
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(name text)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+	SELECT materialization.dependencies(trendstore) FROM trend.trendstore WHERE trend.to_char(trendstore) = $1;
+$$ LANGUAGE SQL STABLE;
