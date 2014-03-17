@@ -3,18 +3,28 @@ from itertools import imap, groupby
 from functools import wraps
 
 from minerva.util import expand_args, first
-from minerva.directory.distinguishedname import explode
+from minerva.directory.distinguishedname import explode, InvalidDistinguishedNameError
 
 
 def entitytype_name_from_dn(dn):
     """
     Return type of last component of distinguished name
     """
-    return explode(dn)[-1][0]
+    try:
+        return explode(dn)[-1][0]
+    except IndexError:
+        raise InvalidDistinguishedNameError
 
 
 def datarecords_to_packages(records):
     records_with_key = ((r.get_key(), r) for r in records)
+
+    def record_with_key_ok(record_with_key):
+        key, record = record_with_key
+
+        return key is not None
+
+    records_with_key = filter(record_with_key_ok, records_with_key)
 
     sorted_records_with_key = sorted(records_with_key, key=first)
 
@@ -33,9 +43,12 @@ class DataRecord(object):
         return str(self.get_key())
 
     def get_key(self):
-        entitytype_name = entitytype_name_from_dn(self.dn)
-
-        return self.timestamp, entitytype_name, self.granularity
+        try:
+            entitytype_name = entitytype_name_from_dn(self.dn)
+        except InvalidDistinguishedNameError:
+            return None
+        else:
+            return self.timestamp, entitytype_name, self.granularity
 
 
 def package(key, records):
