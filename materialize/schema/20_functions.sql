@@ -23,8 +23,8 @@ AS $$
 DECLARE
 	count integer;
 BEGIN
-	INSERT INTO materialization.state(type_id, timestamp, max_modified, sources)
-	SELECT type_id, timestamp, max_modified, sources
+	INSERT INTO materialization.state(type_id, timestamp, max_modified, source_states)
+	SELECT type_id, timestamp, max_modified, source_states
 	FROM materialization.new_materializables;
 
 	GET DIAGNOSTICS count = ROW_COUNT;
@@ -41,7 +41,9 @@ DECLARE
 	count integer;
 BEGIN
 	UPDATE materialization.state
-	SET max_modified = mzb.max_modified, sources = mzb.sources
+	SET
+		max_modified = mzb.max_modified,
+		source_states = mzb.source_states
 	FROM materialization.modified_materializables mzb
 	WHERE
 		state.type_id = mzb.type_id AND
@@ -145,7 +147,7 @@ DECLARE
 	row_count integer;
 	result materialization.materialization_result;
 	replicated_server_conn system.setting;
-	sources_state materialization.source_modified[];
+	tmp_source_states materialization.source_fragment_state[];
 BEGIN
 	schema_name = 'trend';
 	table_name = trend.to_base_table_name(src);
@@ -162,7 +164,7 @@ BEGIN
 	FROM
 		trend.table_columns(schema_name, table_name);
 
-	sources_query = format('SELECT sources
+	sources_query = format('SELECT source_states
 	FROM materialization.materializables mz
 	JOIN materialization.type ON type.id = mz.type_id
 	WHERE
@@ -177,7 +179,7 @@ BEGIN
 
 	IF replicated_server_conn IS NULL THEN
 		-- Local materialization
-		EXECUTE sources_query INTO sources_state;
+		EXECUTE sources_query INTO tmp_source_states;
 		EXECUTE format('INSERT INTO trend.%I (%s) %s', dst_partition.table_name, columns_part, data_query);
 	ELSE
 		-- Remote materialization
@@ -188,8 +190,8 @@ BEGIN
 		FROM
 			trend.table_columns(schema_name, table_name) col;
 
-		SELECT sources INTO sources_state
-		FROM public.dblink(conn_str, sources_query) AS r (sources materialization.source_modified[]);
+		SELECT sources INTO tmp_source_states
+		FROM public.dblink(conn_str, sources_query) AS r (sources materialization.source_fragment_state[]);
 
 		EXECUTE format('INSERT INTO trend.%I (%s) SELECT * FROM public.dblink(%L, %L) AS rel (%s)',
 			dst_partition.table_name, columns_part, conn_str, data_query, column_defs_part);
@@ -197,7 +199,7 @@ BEGIN
 
 	GET DIAGNOSTICS result.row_count = ROW_COUNT;
 
-	UPDATE materialization.state SET processed_sources = sources_state
+	UPDATE materialization.state SET processed_states = tmp_source_states
 	FROM materialization.type
 	WHERE type.id = state.type_id AND state.timestamp = $3
 	AND type.src_trendstore_id = $1.id
@@ -256,8 +258,9 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE OR REPLACE FUNCTION define(src_trendstore_id integer, dst_trendstore_id integer)
 	RETURNS materialization.type
 AS $$
-	INSERT INTO materialization.type (src_trendstore_id, dst_trendstore_id)
-	VALUES ($1, $2)
+	INSERT INTO materialization.type (src_trendstore_id, dst_trendstore_id, processing_delay, stability_delay)
+	SELECT $1, $2, materialization.default_processing_delay(granularity), materialization.default_stability_delay(granularity)
+	FROM trend.trendstore WHERE id = $2
 	RETURNING type;
 $$ LANGUAGE SQL VOLATILE;
 
@@ -354,15 +357,10 @@ $$ LANGUAGE plpgsql VOLATILE;
 CREATE OR REPLACE FUNCTION runnable(type materialization.type, "timestamp" timestamp with time zone, max_modified timestamp with time zone)
 	RETURNS boolean
 AS $$
-	SELECT $1.enabled AND CASE
-		WHEN trendstore.granularity = '1800' OR trendstore.granularity = '900' OR trendstore.granularity = '300' THEN
-			$2 < now() AND $3 < now() - interval '180 seconds'
-		WHEN trendstore.granularity = '3600' THEN
-			$2 < now() - interval '15 minutes' AND $3 < now() - interval '5 minutes'
-		ELSE
-			$2 < now() - interval '3 hours' AND $3 < now() - interval '15 minutes'
-		END
-	FROM trend.trendstore WHERE id = $1.dst_trendstore_id;
+	SELECT
+		$1.enabled AND
+		materialization.source_data_ready($1, $2, $3) AND
+		($1.reprocessing_period IS NULL OR now() - $2 < $1.reprocessing_period);
 $$ LANGUAGE SQL IMMUTABLE;
 
 
@@ -386,7 +384,7 @@ BEGIN
 	replicated_server_conn = system.get_setting('replicated_server_conn');
 
 	IF replicated_server_conn IS NULL THEN
-		RETURN QUERY SELECT type_id, timestamp
+		RETURN QUERY SELECT trm.type_id, trm.timestamp
 		FROM materialization.tagged_runnable_materializations trm
 		WHERE trm.tag = $1;
 	ELSE
@@ -433,7 +431,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION create_jobs_limited(tag varchar, job_limit integer)
 	RETURNS integer
 AS $$
-	SELECT create_jobs($1, $2);
+	SELECT materialization.create_jobs($1, $2);
 $$ LANGUAGE SQL;
 
 COMMENT ON FUNCTION create_jobs_limited(tag varchar, job_limit integer)
@@ -475,14 +473,25 @@ COMMENT ON FUNCTION untag(materialization.type)
 IS 'Remove all tags from the materialization';
 
 
-CREATE OR REPLACE FUNCTION reset(materialization.type)
+CREATE OR REPLACE FUNCTION reset(type_id integer)
+	RETURNS SETOF materialization.state
+AS $$
+	UPDATE materialization.state SET processed_states = NULL
+	WHERE
+		type_id = $1 AND
+		source_states = processed_states
+	RETURNING *;
+$$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION reset_hard(materialization.type)
 	RETURNS void
 AS $$
 	DELETE FROM trend.partition WHERE trendstore_id = $1.dst_trendstore_id;
 	DELETE FROM materialization.state WHERE type_id = $1.id;
 $$ LANGUAGE SQL VOLATILE;
 
-COMMENT ON FUNCTION reset(materialization.type)
+COMMENT ON FUNCTION reset_hard(materialization.type)
 IS 'Remove data (partitions) resulting from this materialization and the
 corresponding state records, so materialization for all timestamps can be done
 again';
@@ -491,7 +500,7 @@ again';
 CREATE OR REPLACE FUNCTION reset(type_id integer, timestamp with time zone)
 	RETURNS materialization.state 
 AS $$
-	UPDATE materialization.state SET processed_sources = NULL
+	UPDATE materialization.state SET processed_states = NULL
 	WHERE type_id = $1 AND timestamp = $2
 	RETURNING *;
 $$ LANGUAGE SQL VOLATILE;
@@ -516,3 +525,126 @@ CREATE OR REPLACE FUNCTION disable(materialization.type)
 AS $$
 	UPDATE materialization.type SET enabled = false WHERE id = $1.id RETURNING type;
 $$ LANGUAGE SQL VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION fragments(materialization.source_fragment_state[])
+	RETURNS materialization.source_fragment[]
+AS $$
+	SELECT array_agg(fragment) FROM unnest($1);
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION requires_update(materialization.state)
+	RETURNS boolean
+AS $$
+	SELECT (
+		$1.source_states <> $1.processed_states AND
+		materialization.fragments($1.source_states) @> materialization.fragments($1.processed_states)
+	)
+	OR $1.processed_states IS NULL;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION default_processing_delay(granularity character varying)
+	RETURNS interval
+AS $$
+	SELECT CASE
+		WHEN $1 = '1800' OR $1 = '900' OR $1 = '300' THEN
+			interval '0 seconds'
+		WHEN $1 = '3600' THEN
+			interval '15 minutes'
+		ELSE
+			interval '3 hours'
+		END;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION default_stability_delay(granularity character varying)
+	RETURNS interval
+AS $$
+	SELECT CASE
+		WHEN $1 = '1800' OR $1 = '900' OR $1 = '300' THEN
+			interval '180 seconds'
+		WHEN $1 = '3600' THEN
+			interval '5 minutes'
+		ELSE
+			interval '15 minutes'
+		END;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION source_data_ready(type materialization.type, "timestamp" timestamp with time zone, max_modified timestamp with time zone)
+	RETURNS boolean
+AS $$
+	SELECT
+		$2 < now() - $1.processing_delay AND
+		$3 < now() - $1.stability_delay;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(trend.trendstore, level integer)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+-- Stub to allow recursive definition.
+	SELECT $1, $2;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION direct_view_dependencies(trend.trendstore)
+	RETURNS SETOF trend.trendstore
+AS $$
+	SELECT trendstore
+	FROM trend.trendstore
+	JOIN trend.view_trendstore_link vtl ON vtl.trendstore_id = trendstore.id
+	JOIN trend.view ON view.id = vtl.view_id
+	WHERE view.trendstore_id = $1.id;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION direct_table_dependencies(trend.trendstore)
+	RETURNS SETOF trend.trendstore
+AS $$
+	SELECT trendstore
+	FROM trend.trendstore
+	JOIN materialization.type ON type.src_trendstore_id = trendstore.id
+	WHERE dst_trendstore_id = $1.id;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION direct_dependencies(trend.trendstore)
+	RETURNS SETOF trend.trendstore
+AS $$
+	SELECT
+	CASE WHEN $1.type = 'view' THEN
+		materialization.direct_view_dependencies($1)
+	WHEN $1.type = 'table' THEN
+		materialization.direct_table_dependencies($1)
+	END;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(trend.trendstore, level integer)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+	SELECT (d.dependencies).* FROM (
+		SELECT materialization.dependencies(dependency, $2 + 1)
+		FROM materialization.direct_dependencies($1) dependency
+	) d
+	UNION ALL
+	SELECT dependency, $2
+	FROM materialization.direct_dependencies($1) dependency;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(trend.trendstore)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+	SELECT materialization.dependencies($1, 1);
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION dependencies(name text)
+	RETURNS TABLE(trendstore trend.trendstore, level integer)
+AS $$
+	SELECT materialization.dependencies(trendstore) FROM trend.trendstore WHERE trend.to_char(trendstore) = $1;
+$$ LANGUAGE SQL STABLE;
