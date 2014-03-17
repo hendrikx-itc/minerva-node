@@ -28,8 +28,8 @@ from minerva.util.tabulate import render_table
 from minerva.instance import MinervaInstance
 from minerva.directory.helpers_v4 import name_to_datasource
 from minerva.storage import get_plugin
-import minerva.storage.trend.datapackage
-import minerva.storage.attribute.datapackage
+import minerva.storage.trend.rawdatapackage
+import minerva.storage.attribute.rawdatapackage
 
 from minerva_harvesting.fileprocessor import process_file
 from minerva_harvesting.plugins import iter_entry_points, \
@@ -42,8 +42,8 @@ config_file = "{}.conf".format(script_name)
 configfile_path = os.path.join("/etc/minerva/", config_file)
 
 package_constructors = {
-    "trend": minerva.storage.trend.datapackage.DataPackage,
-    "attribute": minerva.storage.attribute.datapackage.DataPackage
+    "trend": minerva.storage.trend.rawdatapackage.RawDataPackage,
+    "attribute": minerva.storage.attribute.rawdatapackage.RawDataPackage
 }
 
 
@@ -386,8 +386,7 @@ def store_database(minerva_instance, user, storage_type, datasource_name):
 
         storage = get_plugin(storage_type)(conn, api_version=4)
 
-        yield compose(partial(storage.store_raw, datasource),
-                      storage.RawDataPackage)
+        yield partial(storage.store_raw, datasource)
 
 
 @contextmanager
