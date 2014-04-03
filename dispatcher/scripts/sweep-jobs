@@ -153,6 +153,7 @@ def sweep(job_sources):
             paths = filter(file_matches, all_file_paths)
 
         def is_old(path):
+            logging.debug(path)
             delay_delta = datetime.timedelta(seconds=DELAY)
 
             try:
@@ -163,9 +164,6 @@ def sweep(job_sources):
                 modified = datetime.datetime.fromtimestamp(timestamp)
 
                 return modified < (datetime.datetime.now() - delay_delta)
-
-        for path in paths:
-            logging.debug(path)
 
         for path in filter(is_old, paths):
             yield job_source.id, job_source.job_description(path)
