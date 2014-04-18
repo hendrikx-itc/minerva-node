@@ -230,7 +230,7 @@ def filter_trend_package(entity_filter, trend_filter, package):
                                  zip(trend_filter_map, values)
                                  if include]
 
-        trend_filtered_row = row[:-1] + (trend_filtered_values,)
+        trend_filtered_row = tuple(row[:-1]) + (trend_filtered_values,)
 
         filtered_rows.append(trend_filtered_row)
 

@@ -8,6 +8,6 @@ Homepage: http://www.hendrikx-itc.nl
 
 Package: minerva-materialize-schema
 Architecture: all
-Depends: ${misc:Depends}, minerva-storage-trend-schema
+Depends: ${misc:Depends}, minerva-database
 Description: Minerva materialization database schema
  Adds database materialization support to a Minerva database with trend storage.

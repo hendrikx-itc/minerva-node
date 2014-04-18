@@ -398,9 +398,20 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION add_array(int[], int[]) RETURNS int[]
+CREATE OR REPLACE FUNCTION add_array(bigint[], integer[]) RETURNS bigint[]
 AS $$
-SELECT array_agg(arr1 + arr2) FROM
+SELECT array_agg((arr1 + arr2)::bigint)::bigint[] FROM
+(
+	SELECT
+	unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
+	unnest($2[1:least(array_length($1,1), array_length($2,1))]) AS arr2
+) AS foo;
+$$ LANGUAGE SQL IMMUTABLE;
+
+
+CREATE OR REPLACE FUNCTION add_array(bigint[], smallint[]) RETURNS bigint[]
+AS $$
+SELECT array_agg((arr1 + arr2)::bigint)::bigint[] FROM
 (
 	SELECT
 	unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
@@ -409,10 +420,10 @@ SELECT array_agg(arr1 + arr2) FROM
 $$ LANGUAGE SQL STABLE STRICT;
 
 
-CREATE AGGREGATE sum_array (int[])
+CREATE AGGREGATE sum_array (integer[])
 (
     sfunc = add_array,
-    stype = int[]
+    stype = bigint[]
 );
 
 
@@ -434,7 +445,7 @@ CREATE AGGREGATE sum_array (double precision[])
 );
 
 
-CREATE OR REPLACE FUNCTION multiply_array(int[], int[]) RETURNS int[]
+CREATE OR REPLACE FUNCTION multiply_array(bigint[], int[]) RETURNS bigint[]
 AS $$
 SELECT array_agg(arr1 * arr2) FROM
 (
@@ -442,7 +453,7 @@ SELECT array_agg(arr1 * arr2) FROM
 	unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
 	unnest($2[1:least(array_length($1,1), array_length($2,1))]) AS arr2
 ) AS foo;
-$$ LANGUAGE SQL STABLE STRICT;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
 
 
 CREATE OR REPLACE FUNCTION divide_array(int[], int) RETURNS double precision[]
@@ -490,7 +501,13 @@ $$ LANGUAGE SQL STABLE STRICT;
 CREATE OR REPLACE FUNCTION array_sum(int[]) RETURNS bigint
 AS $$
 SELECT sum(t) FROM unnest($1) t;
-$$ LANGUAGE SQL STABLE STRICT;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+
+CREATE OR REPLACE FUNCTION array_sum(bigint[]) RETURNS numeric 
+AS $$
+SELECT sum(t) FROM unnest($1) t;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
 
 
 CREATE DOMAIN pdf AS int[];

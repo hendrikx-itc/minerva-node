@@ -26,6 +26,21 @@ CREATE TABLE type (
 	enabled boolean NOT NULL DEFAULT FALSE
 );
 
+COMMENT ON COLUMN type.src_trendstore_id IS
+'The unique identifier of this materialization type';
+COMMENT ON COLUMN type.src_trendstore_id IS
+'The Id of the source trendstore, which should be the Id of a view based trendstore';
+COMMENT ON COLUMN type.dst_trendstore_id IS
+'The Id of the destination trendstore, which should be the Id of a table based trendstore';
+COMMENT ON COLUMN type.processing_delay IS
+'The time after the destination timestamp before this materialization can be executed';
+COMMENT ON COLUMN type.stability_delay IS
+'The time to wait after the most recent modified timestamp before the source data is considered ''stable''';
+COMMENT ON COLUMN type.reprocessing_period IS
+'The maximum time after the destination timestamp that the materialization is allowed to be executed';
+COMMENT ON COLUMN type.enabled IS
+'Indicates if jobs should be created for this materialization (manual execution is always possible)';
+
 ALTER TABLE type OWNER TO minerva_admin;
 
 ALTER TABLE ONLY type
@@ -73,6 +88,19 @@ CREATE TABLE state (
 	processed_states source_fragment_state[] DEFAULT NULL,
 	job_id integer DEFAULT NULL
 );
+
+COMMENT ON COLUMN state.type_id IS
+'The Id of the materialization type';
+COMMENT ON COLUMN state.timestamp IS
+'The timestamp of the materialized (materialization result) data';
+COMMENT ON COLUMN state.max_modified IS
+'The greatest modified timestamp of all materialization sources';
+COMMENT ON COLUMN state.source_states IS
+'Array of trendstore_id/timestamp/modified combinations for all source data fragments';
+COMMENT ON COLUMN state.processed_states IS
+'Array containing a snapshot of the source_states at the time of the most recent materialization';
+COMMENT ON COLUMN state.job_id IS
+'Id of the most recent job for this materialization';
 
 ALTER TABLE state OWNER TO minerva_admin;
 
