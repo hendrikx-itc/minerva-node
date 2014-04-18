@@ -258,8 +258,8 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE OR REPLACE FUNCTION define(src_trendstore_id integer, dst_trendstore_id integer)
 	RETURNS materialization.type
 AS $$
-	INSERT INTO materialization.type (src_trendstore_id, dst_trendstore_id, processing_delay, stability_delay)
-	SELECT $1, $2, materialization.default_processing_delay(granularity), materialization.default_stability_delay(granularity)
+	INSERT INTO materialization.type (src_trendstore_id, dst_trendstore_id, processing_delay, stability_delay, reprocessing_period)
+	SELECT $1, $2, materialization.default_processing_delay(granularity), materialization.default_stability_delay(granularity), interval '3 days'
 	FROM trend.trendstore WHERE id = $2
 	RETURNING type;
 $$ LANGUAGE SQL VOLATILE;
