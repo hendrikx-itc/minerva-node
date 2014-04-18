@@ -88,11 +88,11 @@ CREATE TYPE materialization_result AS (processed_max_modified timestamp with tim
 CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
 	RETURNS void
 AS $$
-	SELECT trend.add_trend_to_trendstore(trendstore, name, datatype)
-	FROM trend.table_columns('trend', trend.to_base_table_name($1)), trend.trendstore
+	SELECT trend.add_trend_to_trendstore($2, name, datatype)
+	FROM trend.table_columns('trend', trend.to_base_table_name($1))
 	WHERE name NOT IN (
 		SELECT name FROM trend.table_columns('trend', trend.to_base_table_name($2))
-	) AND trendstore.id = $2.id;
+	);
 $$ LANGUAGE SQL VOLATILE;
 
 COMMENT ON FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
