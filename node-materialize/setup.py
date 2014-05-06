@@ -16,7 +16,7 @@ __author__ = "Hendrikx ITC"
 
 setup(
     name="materialize",
-    version="4.5.8",
+    version="4.5.11",
     description=__doc__,
     author=__author__,
     author_email="info@hendrikx-itc.nl",
