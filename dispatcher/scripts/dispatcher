@@ -134,25 +134,16 @@ def main():
         jobcollector = JobCollector(job_sources, stop_event)
         jobcollector.start()
 
-        process_job = partial(store_job, conn, stop_event)
-
-        consumer_loop = partial(each, process_job,
-                                jobcollector.iter_jobs())
-
-        consumer = threading.Thread(target=consumer_loop, name="consumer")
-        consumer.start()
-
         logging.info("started with pid {0:d}".format(os.getpid()))
 
-        while not stop_event.is_set():
-            stop_event.wait(1.0)
+        for job in jobcollector.iter_jobs():
+            store_job(conn, stop_event, job)
+
+        logging.info("loop terminated")
 
         jobcollector.stop()
         jobcollector.join()
         logging.info("collector stopped")
-
-        consumer.join()
-        logging.info("consumer stopped")
 
         conn.commit()
 
