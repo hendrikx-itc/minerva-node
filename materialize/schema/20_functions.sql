@@ -398,7 +398,8 @@ BEGIN
 		JOIN materialization.tagged_runnable_materializations rj ON
 			replicated_state.type_id = rj.type_id
 				AND
-			replicated_state.timestamp = rj.timestamp;
+			replicated_state.timestamp = rj.timestamp
+        WHERE materialization.no_slave_lag();
 	END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -648,3 +649,11 @@ CREATE OR REPLACE FUNCTION dependencies(name text)
 AS $$
 	SELECT materialization.dependencies(trendstore) FROM trend.trendstore WHERE trend.to_char(trendstore) = $1;
 $$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION no_slave_lag()
+    RETURNS boolean
+    LANGUAGE sql
+AS $$SELECT bytes_lag < 10000000
+FROM metric.replication_lag
+WHERE client_addr = '192.168.42.19';$$;
