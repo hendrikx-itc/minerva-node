@@ -85,6 +85,29 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE TYPE materialization_result AS (processed_max_modified timestamp with time zone, row_count integer);
 
 
+CREATE OR REPLACE FUNCTION missing_columns(src trend.trendstore, dst trend.trendstore)
+	RETURNS TABLE (name character varying, datatype character varying)
+AS $$
+	SELECT name, datatype
+	FROM trend.table_columns('trend', trend.to_base_table_name($1))
+	WHERE name NOT IN (
+		SELECT name FROM trend.table_columns('trend', trend.to_base_table_name($2))
+	);
+$$ LANGUAGE SQL STABLE;
+
+COMMENT ON FUNCTION missing_columns(src trend.trendstore, dst trend.trendstore)
+IS 'The set of table columns (name, datatype) that exist in the source trendstore but not yet in the destination.';
+
+
+CREATE OR REPLACE FUNCTION missing_columns(materialization.type)
+	RETURNS TABLE (name character varying, datatype character varying)
+AS $$
+	SELECT materialization.missing_columns(src, dst)
+	FROM trend.trendstore src, trend.trendstore dst
+	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+$$ LANGUAGE SQL STABLE;
+
+
 CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
 	RETURNS void
 AS $$
