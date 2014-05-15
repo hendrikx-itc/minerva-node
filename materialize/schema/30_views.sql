@@ -28,6 +28,20 @@ ALTER VIEW tagged_runnable_materializations OWNER TO minerva_admin;
 
 GRANT ALL ON materialization.tagged_runnable_materializations TO minerva_admin;
 GRANT SELECT ON materialization.tagged_runnable_materializations TO minerva;
+
+
+-- View 'runnable_materializations'
+
+CREATE OR REPLACE view runnable_materializations AS 
+SELECT type, state
+FROM state
+JOIN type ON type.id = state.type_id
+WHERE
+    requires_update(state)
+    AND
+    runnable(type, state."timestamp", state.max_modified);
+
+ALTER VIEW runnable_materializations OWNER TO minerva_admin;
 GRANT INSERT,DELETE,UPDATE ON materialization.tagged_runnable_materializations TO minerva_writer;
 
 
@@ -177,3 +191,38 @@ ALTER VIEW trend_ext OWNER TO minerva_admin;
 
 GRANT SELECT ON TABLE trend_ext TO minerva;
 
+
+-- View 'next_up_materializations'
+
+CREATE OR REPLACE VIEW next_up_materializations AS 
+SELECT type_id, timestamp, (tag).name, cost, cumsum, resources AS group_resources, (job.id IS NOT NULL AND job.state IN ('queued', 'running')) AS job_active FROM
+(
+    SELECT
+        (rm.type).id AS type_id,
+        (rm.state).timestamp,
+        tag,
+        (rm.type).cost,
+        sum((rm.type).cost) over (partition by tag.name order by trend.granularity_seconds(ts.granularity) asc, (rm.state).timestamp desc, rm.type) as cumsum,
+        (rm.state).job_id
+    FROM materialization.runnable_materializations rm
+    JOIN trend.trendstore ts ON ts.id = (rm.type).dst_trendstore_id
+    JOIN materialization.type_tag_link ttl ON ttl.type_id = (rm.type).id
+    JOIN directory.tag ON tag.id = ttl.tag_id
+) summed
+JOIN materialization.group_priority ON (summed.tag).id = group_priority.tag_id
+LEFT JOIN system.job ON job.id = job_id
+WHERE cumsum <= group_priority.resources;
+
+ALTER VIEW next_up_materializations OWNER TO minerva_admin;
+
+
+-- View 'required_resources_by_group'
+
+CREATE OR REPLACE VIEW required_resources_by_group AS
+SELECT ttl.tag_id, sum((rm.type).cost) as required
+FROM materialization.runnable_materializations rm
+JOIN materialization.type_tag_link ttl ON ttl.type_id = (rm.type).id
+JOIN materialization.group_priority gp ON gp.tag_id = ttl.tag_id
+GROUP BY ttl.tag_id;
+
+ALTER VIEW required_resources_by_group OWNER TO minerva_admin;

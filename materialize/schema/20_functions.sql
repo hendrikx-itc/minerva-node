@@ -364,6 +364,13 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE;
 
 
+CREATE OR REPLACE FUNCTION runnable(materialization.type, materialization.state)
+	RETURNS boolean
+AS $$
+	SELECT materialization.runnable($1, $2.timestamp, $2.max_modified);
+$$ LANGUAGE SQL IMMUTABLE;
+
+
 CREATE OR REPLACE FUNCTION open_job_slots(slot_count integer)
 	RETURNS integer
 AS $$
@@ -657,3 +664,14 @@ CREATE OR REPLACE FUNCTION no_slave_lag()
 AS $$SELECT bytes_lag < 10000000
 FROM metric.replication_lag
 WHERE client_addr = '192.168.42.19';$$;
+
+
+CREATE OR REPLACE FUNCTION materialization.create_jobs()
+    RETURNS integer
+    LANGUAGE sql
+AS $function$
+    SELECT COUNT(materialization.create_job(num.type_id, timestamp))::integer
+    FROM materialization.next_up_materializations num
+    WHERE NOT job_active;
+$function$;
+
