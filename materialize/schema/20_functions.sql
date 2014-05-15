@@ -695,6 +695,6 @@ CREATE OR REPLACE FUNCTION materialization.create_jobs()
 AS $function$
     SELECT COUNT(materialization.create_job(num.type_id, timestamp))::integer
     FROM materialization.next_up_materializations num
-    WHERE NOT job_active;
+    WHERE NOT job_active AND materialization.no_slave_lag();
 $function$;
 
