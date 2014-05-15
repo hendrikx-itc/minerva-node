@@ -42,7 +42,6 @@ WHERE
     runnable(type, state."timestamp", state.max_modified);
 
 ALTER VIEW runnable_materializations OWNER TO minerva_admin;
-GRANT INSERT,DELETE,UPDATE ON materialization.tagged_runnable_materializations TO minerva_writer;
 
 
 -- View 'materializable_source_state'
@@ -70,7 +69,6 @@ ALTER VIEW materializable_source_state OWNER TO minerva_admin;
 
 GRANT ALL ON materialization.materializable_source_state TO minerva_admin;
 GRANT SELECT ON materialization.materializable_source_state TO minerva;
-GRANT INSERT,DELETE,UPDATE ON materialization.materializable_source_state TO minerva_writer;
 
 
 -- View 'materializables'
@@ -96,7 +94,6 @@ GRANT ALL ON materialization.materializables TO minerva_admin;
 
 GRANT ALL ON materialization.materializables TO minerva_admin;
 GRANT SELECT ON materialization.materializables TO minerva;
-GRANT INSERT,DELETE,UPDATE ON materialization.materializables TO minerva_writer;
 
 
 -- View 'new_materializables'
@@ -119,7 +116,6 @@ GRANT ALL ON materialization.new_materializables TO minerva_admin;
 
 GRANT ALL ON materialization.new_materializables TO minerva_admin;
 GRANT SELECT ON materialization.new_materializables TO minerva;
-GRANT INSERT,DELETE,UPDATE ON materialization.new_materializables TO minerva_writer;
 
 
 -- View 'modified_materializables'
@@ -142,7 +138,6 @@ GRANT ALL ON materialization.modified_materializables TO minerva_admin;
 
 GRANT ALL ON materialization.modified_materializables TO minerva_admin;
 GRANT SELECT ON materialization.modified_materializables TO minerva;
-GRANT INSERT,DELETE,UPDATE ON materialization.modified_materializables TO minerva_writer;
 
 
 -- View 'obsolete_state'
@@ -163,7 +158,6 @@ GRANT ALL ON materialization.obsolete_state TO minerva_admin;
 
 GRANT ALL ON materialization.obsolete_state TO minerva_admin;
 GRANT SELECT ON materialization.obsolete_state TO minerva;
-GRANT INSERT,DELETE,UPDATE ON materialization.obsolete_state TO minerva_writer;
 
 
 -- View 'trend_ext'
