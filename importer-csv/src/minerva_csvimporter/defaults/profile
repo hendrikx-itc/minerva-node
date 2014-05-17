@@ -1,42 +1,63 @@
 # Profile for import-csv script
-timezone = Europe/Amsterdam
-identifier = "Cell={cellid}"
-identifier_regex = "(.*)"
-granularity = 86400
-timestamp_format = %Y%m%d_%H%M
+timezone: Europe/Amsterdam
 
-# Column containing timestamp for data
-# --timestamp option overides this
-#timestamp_column = timestamp
-timestamp_column =
-timestamp_from_filename_regex =
+character_encoding: utf-8
 
-timestamp_is_start = false
+dialect:
+    type: auto
 
-identifier_is_alias = false
-ignore_field_mismatches = false
+#   type: custom
+#   config:
+#       delimiter: ';'
+#       lineterminator: '\r\n'
+#       quotechar: '"'
 
-# Comma separated list of field names to parse
-# Leave empty for parsing all fields
-fields =
+ignore_field_mismatches: false
 
-# Comma separated list of field names to ignore
-# Leave empty for ignoring no fields
-ignore_fields =
+
+field_selector:
+    type: all
+
+# Select explicit set of columns
+#        type: select
+#        config:
+#            names: [a, b, ...]
+
+# Exclude certain columns
+#        type: exclude
+#        config:
+#            names: [x, y, ...]
 
 # Json formatted dictionary defining a mapping for specific columns and values
 # e.g.
 # value_mapping = {"ccr":{"-1":"", "2":"1"}, "cssr":{"-1":"", "2":"1"}}
 # (for mapping '-1' to '' (resulting in a Null value in database)
 # and '2' to '1' for columns ccr and cssr)
-value_mapping =
+value_mapping:
 
-character_encoding = utf-8
-dialect = auto
+identifier:
+    template: "Cell={id}"
 
-[aggregate]
-# The column used to group the records
-group_by = entity_id
+    # Applied after the template rendering
+    regex: "(.*)"
 
-# Name of the function to use for aggregation (currently only 'sum' is allowed)
-function = sum
+storage:
+    type: trend
+    config:
+        granularity: 86400
+        timestamp_is_start: false
+
+timestamp:
+    type: from_column
+    config:
+        name: timestamp
+        format: "%Y%m%d_%H%M"
+
+# From filename:
+#	type: from_filename
+#	config:
+#		regex: "[0-9]{12}"
+#		format: "%Y%m%d%H%M"
+
+# Current time:
+#	type: now

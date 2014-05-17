@@ -13,7 +13,6 @@ the Free Software Foundation; either version 3, or (at your option) any later
 version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
-from datetime import datetime
 import logging.handlers
 import os
 import sys
@@ -21,13 +20,22 @@ import argparse
 from contextlib import closing
 from StringIO import StringIO
 import json
+import re
+from functools import partial
+import operator
 
+import yaml
 from configobj import ConfigObj
 from pkg_resources import resource_string
 
 from minerva.instance import MinervaInstance
-from minerva.util.config import parse_size
-from minerva_csvimporter import import_csv
+from minerva.util import identity, compose
+
+from minerva_csvimporter.importer import import_csv, ConfigurationError
+from minerva_csvimporter.timestamp_extractor import create_timestamp_fn
+from minerva_csvimporter import storage
+from minerva_csvimporter.data_requirements import any_field_empty
+from minerva_csvimporter.dialects import create_dialect
 
 DEFAULT_CONFIG = resource_string("minerva_csvimporter",
                                  "defaults/import-csv.conf")
@@ -53,11 +61,6 @@ def main():
         print("Nothing to do: No csv file specified.")
         return 0
 
-    if args.timestamp and args.timestamp.lower() == "now":
-        timestamp = datetime.now().strftime(args.timestamp_format)
-    else:
-        timestamp = args.timestamp
-
     minerva_instance = MinervaInstance.load(args.instance)
 
     config = get_config(args)
@@ -65,7 +68,11 @@ def main():
     logging.root.addHandler(logging.StreamHandler())
     logging.root.setLevel(config["log_level"])
 
-    profile = get_profile(args, config)
+    profile = get_profile(config["profile_directory"], args.profile)
+
+    update_profile_from_args(profile, args)
+
+    profile = type_mapping(PROFILE_SCHEMA)(profile)
 
     _, file_name = os.path.split(args.file_path)
 
@@ -74,11 +81,12 @@ def main():
 
     with closing(minerva_instance.connect(user=user)) as conn:
         logging.info("start processing file {0}".format(args.file_path))
-        logging.info("using identifier {0}".format(args.identifier))
+        logging.info("using identifier {0}".format(profile["identifier"]))
+
+        profile["timestamp"].set_filename(file_name)
 
         with closing(open(args.file_path, "rb")) as csv_file:
-            import_csv(conn, profile, args.datasource, args.storage_type,
-                       timestamp, csv_file, file_name)
+            import_csv(conn, profile, args.datasource, csv_file)
 
         logging.info("finished processing file {0}".format(args.file_path))
 
@@ -88,6 +96,10 @@ def main():
 
 
 def create_argument_parser():
+    """
+    Return fully configured ArgumentParser
+    :rtype : ArgumentParser
+    """
     default_minerva_instance = os.environ.get(
         "DEFAULT_MINERVA_INSTANCE", "default")
 
@@ -101,10 +113,10 @@ def create_argument_parser():
     parser.add_argument("datasource", help="name of datasource")
 
     parser.add_argument(
-        "--storage-type", default="trend", help="storage type/format to use")
+        "file_path", nargs="?", help="Path of file that will be processed")
 
     parser.add_argument(
-        "file_path", nargs="?", help="Path of file that will be processed")
+        "--storage-type", default="trend", help="storage type/format to use")
 
     parser.add_argument(
         "--generate-configfile", action=GenerateConfigFileAction, nargs=0,
@@ -126,7 +138,7 @@ def create_argument_parser():
         default=False, help="Produce verbose output")
 
     parser.add_argument(
-        "--ignore-field-mismatches", action="store_true", default=False,
+        "--ignore-field-mismatches", action="store_true", default=None,
         help="ignore lines with more or less fields than found in header")
 
     parser.add_argument(
@@ -149,8 +161,7 @@ def create_argument_parser():
         help="regular expression for timestamp extraction from filename")
 
     parser.add_argument(
-        "--timestamp-format", default="%Y%m%d_%H%M",
-        help="format of date: default: %%Y%%m%%d_%%H%%M")
+        "--timestamp-format", help="format of date: default: %%Y%%m%%d_%%H%%M")
 
     parser.add_argument(
         "--timestamp-column", help="column containing timestamps")
@@ -160,11 +171,11 @@ def create_argument_parser():
         help="Regex for tweaking identifier in identifier field.")
 
     parser.add_argument(
-        "--identifier-is-alias", action="store_true",
+        "--identifier-is-alias", action="store_true", default=None,
         help="Indicated whether identifier is alias.")
 
     parser.add_argument(
-        "--timestamp-is-start", action="store_true",
+        "--timestamp-is-start", action="store_true", default=None,
         help="(Timestamp + granularity) will be used as timestamp "
         "in Minerva database.")
 
@@ -191,39 +202,6 @@ def create_argument_parser():
     return parser
 
 
-def setup_logging(directory, filename, rotation_size, level, verbose, quiet):
-    level_map = {
-        "DEBUG": logging.DEBUG,
-        "INFO": logging.INFO,
-        "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL}
-
-    max_log_size = parse_size(rotation_size)
-
-    filepath = os.path.join(directory, filename)
-    handler = logging.handlers.RotatingFileHandler(
-        filepath, maxBytes=max_log_size, backupCount=5)
-    handler.setLevel(level_map[level])
-
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    handler.setFormatter(formatter)
-
-    rootlogger = logging.getLogger("")
-    rootlogger.setLevel(level_map[level])
-    rootlogger.addHandler(handler)
-
-    if not quiet:
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(formatter)
-        if verbose:
-            stream_handler.setLevel(logging.DEBUG)
-        else:
-            stream_handler.setLevel(logging.WARNING)
-
-        rootlogger.addHandler(stream_handler)
-
-
 class GenerateConfigFileAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         sys.stdout.write(DEFAULT_CONFIG)
@@ -246,95 +224,171 @@ def get_config(args):
     return config
 
 
-def get_profile(args, config):
-    profile = ConfigObj(StringIO(DEFAULT_PROFILE))
+def assure_type(type, map_to_type=None):
+    def fn(value):
+        if value is not None:
+            if isinstance(value, type):
+                return value
+            else:
+                if map_to_type is not None:
+                    return map_to_type(value)
+                else:
+                    return type(value)
 
-    profile_path = None
+    return fn
 
-    if os.path.isfile(args.profile):
-        profile_path = args.profile
-    elif os.path.isfile(os.path.join(config["profile_directory"],
-                                     args.profile)):
-        profile_path = os.path.join(config["profile_directory"], args.profile)
 
-    if profile_path:
-        profile.merge(ConfigObj(profile_path))
+def to_granularity_seconds(g):
+    return int(GRANULARITIES.get(g, g))
+
+
+def to_list(l):
+    return map(str.strip, ",".split(l))
+
+
+def to_bool(b):
+    return b.lower() in ('t', 'true', '1')
+
+
+def to_storage(s):
+    return storage.type_map[s["type"]](**s["config"])
+
+
+def select_fields(names):
+    def fn(all_names):
+        return [name for name in names if name in all_names]
+
+    return fn
+
+
+def exclude_fields(exclude_names):
+    def fn(all_names):
+        return [name for name in all_names if not name in exclude_names]
+
+    return fn
+
+
+def create_field_selector(f):
+    type_name = f["type"]
+
+    if type_name == "select":
+        return select_fields(f["config"]["names"])
+
+    elif type_name == "exclude":
+        return exclude_fields(f["config"]["names"])
+
+    elif type_name == "all":
+        return identity
+
     else:
-        logging.info(
-            "Profile '{0}' not found. Using default "
-            "profile".format(args.profile))
+        raise Exception("No such field selector: {}".format(type_name))
 
-    granularity = args.granularity or profile["granularity"]
-    profile["granularity"] = int(GRANULARITIES.get(granularity, granularity))
 
-    if args.fields:
-        profile["fields"] = args.fields
-    else:
-        profile["fields"] = profile.as_list("fields")
+class IdentifierExtractor(object):
+    def __init__(self, template, regex):
+        self.template = template
+        self.regex = regex
 
-    if args.ignore_fields:
-        profile["ignore_fields"] = args.ignore_fields
-    else:
-        profile["ignore_fields"] = profile.as_list("ignore_fields")
+        self.fields = re.findall(r"{(\w+)}", template) or [template]
 
-    if args.timezone:
-        profile["timezone"] = args.timezone
+        if self.fields:
+            #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
+            get_identifier = expand_kwargs(template.format)
+        else:
+            get_identifier = partial(get_value_by_key, identifier)
 
-    if args.ignore_field_mismatches:
-        profile["ignore_field_mismatches"] = args.ignore_field_mismatches
-    else:
-        profile["ignore_field_mismatches"] = profile.as_bool(
-            "ignore_field_mismatches")
+        extract_ident = partial(extract_identifier, regex)
 
+        self.record_to_dn = compose(extract_ident, get_identifier)
+
+    def __str__(self):
+        return self.template
+
+    def get_dn_from_record(self, record):
+        return self.record_to_dn(record)
+
+    def header_requirements(self):
+        return []
+
+    def record_requirements(self):
+        return [
+            compose(operator.not_, any_field_empty(self.fields))
+        ]
+
+
+def extract_identifier(pattern, value):
+    regex = re.compile(pattern)
+
+    m = regex.match(value)
+
+    return "".join(m.groups())
+
+
+def expand_kwargs(fn):
+    def expander(kwargs):
+        return fn(**kwargs)
+
+    return expander
+
+
+PROFILE_SCHEMA = {
+    "storage": assure_type(storage.Storage, to_storage),
+    "field_selector": create_field_selector,
+    "timezone": str,
+    "ignore_field_mismatches": assure_type(bool, to_bool),
+    "identifier": expand_kwargs(IdentifierExtractor),
+    "timestamp": create_timestamp_fn,
+    "character_encoding": str,
+    "dialect": create_dialect,
+    "value_mapping": assure_type(dict, json.loads)
+}
+
+
+def update_profile_from_args(profile, args):
     if args.identifier:
-        profile["identifier"] = args.identifier
-
-    if args.timestamp_from_filename_regex:
-        profile["timestamp_from_filename_regex"] = \
-            args.timestamp_from_filename_regex
-
-    if args.timestamp_format:
-        profile["timestamp_format"] = args.timestamp_format
-    elif not profile.get("timestamp_format"):
-        profile["timestamp_format"] = "%Y%m%d_%H%M"
-
-    if args.timestamp_column:
-        profile["timestamp_column"] = args.timestamp_column
+        profile["identifier"]["template"] = args.identifier
 
     if args.identifier_regex:
-        profile["identifier_regex"] = args.identifier_regex
-
-    if args.identifier_is_alias:
-        profile["identifier_is_alias"] = args.identifier_is_alias
-    else:
-        profile["identifier_is_alias"] = profile.as_bool("identifier_is_alias")
-
-    if args.timestamp_is_start:
-        profile["timestamp_is_start"] = args.timestamp_is_start
-    else:
-        profile["timestamp_is_start"] = profile.as_bool("timestamp_is_start")
+        profile["identifier"]["regex"] = args.identifier_regex
 
     if args.character_encoding:
         profile["character_encoding"] = args.character_encoding
 
-    if args.dialect:
-        profile["dialect"] = args.dialect
 
-    value_mapping = profile["value_mapping"]
-    if args.value_mapping:
-        value_mapping = args.value_mapping
+def load_profile(profile_directory, name):
+    possible_profile_paths = [
+        name,
+        os.path.join(profile_directory, name)
+    ]
 
-    if value_mapping == "":
-        profile["value_mapping"] = {}
+    try:
+        profile_path = next(
+            path for path in possible_profile_paths if os.path.isfile(path)
+        )
+    except StopIteration:
+        raise ConfigurationError("profile '{}' not found".format(name))
     else:
-        try:
-            profile["value_mapping"] = json.loads(value_mapping)
-        except ValueError:
-            logging.warning("value_mapping '{0}' not in "
-                            "correct json format".format(value_mapping))
-            sys.exit(1)
+        return yaml.load(open(profile_path))
+
+
+def get_profile(profile_directory, profile_name):
+    profile = yaml.load(StringIO(DEFAULT_PROFILE))
+
+    try:
+        profile.update(
+            load_profile(profile_directory, profile_name)
+        )
+    except ConfigurationError as exc:
+        logging.warn("{} - using defaults".format(exc))
 
     return profile
+
+
+def type_mapping(schema):
+    def fn(data):
+        return {k: schema.get(k)(v) for k, v in data.iteritems()}
+
+    return fn
 
 
 if __name__ == '__main__':
