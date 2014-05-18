@@ -17,10 +17,11 @@ from contextlib import closing
 from functools import partial
 import logging.handlers
 import codecs
+import operator
 
 import pytz
 
-from minerva.util import compose
+from minerva.util import compose, identity
 from minerva.directory.helpers_v4 import name_to_datasource
 
 
@@ -86,11 +87,9 @@ def load_csv(profile, datasource, csvfile):
 
     timestamp.set_timezone(datasource.tzinfo)
 
-    record_checks = []
+    record_checks = list(identifier.record_requirements())
 
-    record_checks.extend(identifier.record_requirements())
-
-    include_record = partial(record_passes_checks, record_checks)
+    include_record = record_passes_checks(record_checks)
 
     def include_row(line_nr, column_names, row):
         field_count = len(column_names)
@@ -112,14 +111,12 @@ def load_csv(profile, datasource, csvfile):
 
         return include
 
-    if value_mapping:
-        extract_values = mapping_values_extractor(fields, value_mapping)
-    else:
-        extract_values = plain_values_extractor(fields)
 
-    extract_raw_data_row = compose(tuple, raw_data_row_extractor(
+    extract_values = apply_all(create_values_extrators(fields, value_mapping))
+
+    extract_raw_data_row = compose(tuple, apply_all((
         identifier.get_dn_from_record, timestamp.from_record, extract_values
-    ))
+    )))
 
     records = filter(
         include_record,
@@ -129,9 +126,21 @@ def load_csv(profile, datasource, csvfile):
     return fields, map(extract_raw_data_row, records)
 
 
-def raw_data_row_extractor(*args):
-    def fn(record):
-        return map(as_functor(record), args)
+def create_values_extrators(fields, value_mapping):
+    for field in fields:
+        get_value = itemgetter(field)
+
+        mapping = value_mapping.get(field)
+
+        if mapping:
+            yield compose(mapping, get_value)
+        else:
+            yield get_value
+
+
+def apply_all(fs):
+    def fn(value):
+        return map(as_functor(value), fs)
 
     return fn
 
@@ -153,40 +162,14 @@ def mapping_values_extractor(fields, value_mapping):
     return fn
 
 
-def plain_values_extractor(fields):
-    def fn(record):
-        return [record[field] for field in fields]
-
-    return fn
-
-
-def record_passes_checks(checks, record):
+def record_passes_checks(checks):
     """Return True if record passes all checks and False otherwise."""
-    return all(check(record) for check in checks)
+    return compose(all, apply_all(checks))
 
 
 def is_field_empty(field_name, record):
     """Return True if value of field `field_name` in `record` equals ''."""
     return record[field_name] == ""
-
-
-def get_value_by_key(key, record, default=None):
-    """
-    Return value with key `key` from `record` or otherwise `default`.
-
-    This has the same function as dict.get, but with different argument order
-    to support partial application.
-
-    """
-    v = record[key]
-    if v:
-        return v
-    else:
-        return default
-
-
-def get_value_by_index(index, iterable):
-    return iterable[index]
 
 
 def offset_timestamp(offset, timestamp):
@@ -252,37 +235,6 @@ def read_records(csv_reader, fields, include_row):
             yield dict(
                 zip(column_names, (item.decode('utf-8') for item in row))
             )
-
-
-def get_alias_type_id(conn, alias_type_name):
-    query = "SELECT id FROM directory.aliastype WHERE name = %s"
-
-    with closing(conn.cursor()) as cursor:
-        cursor.execute(query, (alias_type_name,))
-        type_id, = cursor.fetchone()
-
-    return type_id
-
-
-def get_dn_by_entitytype_and_alias(conn, entitytype_id, alias_type_id, alias):
-    query = (
-        "SELECT dn FROM directory.entity e "
-        "JOIN directory.alias a ON e.id = a.entity_id "
-        "WHERE a.name = %s AND e.entitytype_id = %s AND a.type_id = %s")
-
-    with closing(conn.cursor()) as cursor:
-        cursor.execute(query, (alias, entitytype_id, alias_type_id))
-
-        if cursor.rowcount == 1:
-            dn, = cursor.fetchone()
-
-            return dn
-        elif cursor.rowcount == 0:
-            raise ConfigurationError(
-                "Identifier {} is not found".format(alias))
-        elif cursor.rowcount > 1:
-            raise ConfigurationError(
-                "Identifier {} is not unique".format(alias))
 
 
 def recode_utf8(lines):

@@ -295,7 +295,7 @@ class IdentifierExtractor(object):
             #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
             get_identifier = expand_kwargs(template.format)
         else:
-            get_identifier = partial(get_value_by_key, identifier)
+            get_identifier = operator.itemgetter(identifier)
 
         extract_ident = partial(extract_identifier, regex)
 
@@ -329,6 +329,42 @@ def expand_kwargs(fn):
         return fn(**kwargs)
 
     return expander
+
+
+def dict_mapper(d):
+    def fn(value):
+        return d.get(value, value)
+
+    return fn
+
+
+def create_dict_mapper(conf):
+    return dict_mapper(conf["lookup"])
+
+
+def timestamp_parser(timestamp_format):
+    def fn(timestamp_str)
+        return datetime.strptime(timestamp_string, timestamp_format))
+
+    return fn
+
+
+def create_timestamp_parser(conf):
+    return timestamp_parser(conf["format"])
+
+
+mapper_types = {
+    "dict": create_dict_mapper,
+    "parse_timestamp": create_timestamp_parser
+}
+
+
+def create_value_mapper(conf):
+    return mapper_types[conf["type"]](conf["config"])
+
+
+def create_value_mappers(conf):
+    return {key: value for key, value in conf.items()}
 
 
 PROFILE_SCHEMA = {

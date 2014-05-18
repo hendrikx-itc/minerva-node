@@ -34,6 +34,15 @@ field_selector:
 # (for mapping '-1' to '' (resulting in a Null value in database)
 # and '2' to '1' for columns ccr and cssr)
 value_mapping:
+#    ccr:
+#        type: dict
+#        config:
+#            lookup: '{"-1": ""}'
+
+#    timestamp:
+#        type: parse_timestamp
+#        config:
+#            format: "%Y%m%dT%H%M%S"
 
 identifier:
     template: "Cell={id}"
