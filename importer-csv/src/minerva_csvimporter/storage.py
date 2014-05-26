@@ -10,86 +10,163 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import operator
+from functools import partial
 from datetime import timedelta
+from contextlib import closing
 
 import pytz
 
-from minerva.storage import get_plugin
+from minerva.directory.basetypes import DataSource
 from minerva.storage.trend.granularity import create_granularity
-from minerva.util import compose, grouped_by
+from minerva.storage.trend.trendstore import TrendStore
+from minerva.storage.trend.rawdatapackage import RawDataPackage
+from minerva.storage.notification.entityref import EntityDnRef
+from minerva.storage.notification.types import NotificationStore, Record, Attribute
+from minerva.util import grouped_by, identity
+
+from minerva_csvimporter.datatype import deduce_data_types, parse_values, type_map as datatype_map
+from minerva_csvimporter.util import offset_timestamp
 
 
 class Storage(object):
-    def __init__(self):
-        pass
-
     def connect(self, conn):
         raise NotImplementedError()
 
-    def store_raw(self, datasource):
+    def store(self, column_names, value_mapping, raw_data_rows):
         raise NotImplementedError()
 
 
 class TrendStorage(object):
-    def __init__(self, granularity, timestamp_is_start):
+    def __init__(self, datasource, granularity, timestamp_is_start):
+        self.datasource = datasource
         self.granularity = create_granularity(granularity)
-        self.plugin = None
         self.timestamp_is_start = timestamp_is_start
+        self.conn = None
+
+        if self.timestamp_is_start:
+            self.offset = partial(offset_timestamp, timedelta(0, self.granularity))
+        else:
+            self.offset = identity
 
     def connect(self, conn):
-        self.plugin = init_plugin(conn, "trend")
+        self.conn = conn
 
     def __str__(self):
         return "trend(granularity={})".format(self.granularity)
 
-    def store_raw(self, datasource, column_names, raw_data_rows):
-        if self.timestamp_is_start:
-            offset = timedelta(0, self.granularity)
+    def store(self, column_names, value_mapping, raw_data_rows):
+        get_timestamp = operator.itemgetter(1)
 
-            parse_ts = compose(partial(offset_timestamp, offset), parse_ts)
-
-        for timestamp, grouped_rows in grouped_by(raw_data_rows, operator.itemgetter(1)):
+        for timestamp, grouped_rows in grouped_by(raw_data_rows, get_timestamp):
             rows = [
                 (dn, values)
                 for dn, _, values in grouped_rows
             ]
 
-            utc_timestamp = timestamp.astimezone(pytz.utc)
-            utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
+            entity_ref = EntityDnRef(rows[0][0])
 
-            raw_datapackage = self.plugin.RawDataPackage(
+            with closing(self.conn.cursor()) as cursor:
+                datasource = DataSource.from_name(cursor, self.datasource)
+
+                entitytype = entity_ref.get_entitytype(cursor)
+
+                trendstore = TrendStore.get(
+                    cursor, datasource, entitytype, self.granularity
+                )
+
+                if not trendstore:
+                    partition_size = 86400
+
+                    trendstore = TrendStore(datasource, entitytype,
+                            self.granularity, partition_size, "table").create(cursor)
+
+                self.conn.commit()
+
+            utc_timestamp = timestamp.astimezone(pytz.utc)
+            utc_timestamp_str = self.offset(utc_timestamp).strftime("%Y-%m-%dT%H:%M:%S")
+
+            raw_datapackage = RawDataPackage(
                 self.granularity, utc_timestamp_str, column_names, rows)
 
-            self.plugin.store_raw(datasource, raw_datapackage)
+            trendstore.store_raw(raw_datapackage).run(self.conn)
 
 
 class AttributeStorage(object):
-    def __init__(self):
-        self.plugin = None
+    def __init__(self, datasource):
+        self.datasource = datasource
+        self.conn = None
 
     def connect(self, conn):
-        self.plugin = init_plugin(conn, "trend")
+        self.conn = conn
 
     def __str__(self):
         return "attribute()"
 
-    def store_raw(self, datasource, column_names, raw_data_rows):
+    def store(self, column_names, value_mapping, raw_data_rows):
+        with closing(self.conn.cursor()) as cursor:
+            datasource = DataSource.from_name(cursor, self.datasource)
+
         raw_datapackage = self.plugin.RawDataPackage(column_names, raw_data_rows)
 
-        self.plugin.store_raw(datasource, raw_datapackage)
+        self.plugin.store(datasource, raw_datapackage)
 
 
-def init_plugin(conn, storagetype):
-    plugin = get_plugin(storagetype)(conn, api_version=4)
+class NotificationStorage(object):
+    def __init__(self, datasource):
+        self.datasource = datasource
+        self.conn = None
 
-    if not plugin:
-        raise NoSuitablePluginError(
-            "Missing storage plugin {}".format(storagetype))
+    def connect(self, conn):
+        self.conn = conn
 
-    return plugin
+    def __str__(self):
+        return "notification()"
+
+    def store(self, column_names, value_mapping, raw_data_rows):
+        with closing(self.conn.cursor()) as cursor:
+            datasource = DataSource.from_name(cursor, self.datasource)
+
+            notificationstore = NotificationStore.load(cursor, datasource)
+
+            rows = list(raw_data_rows)
+
+            if notificationstore:
+                datatype_dict = {
+                    attribute.name: attribute.data_type
+                    for attribute in notificationstore.attributes
+                }
+
+                datatype_names = [datatype_dict[name] for name in column_names]
+
+            else:
+                datatype_names = deduce_data_types(map(operator.itemgetter(2), rows))
+
+                attributes = [
+                    Attribute(name, datatype, '')
+                    for name, datatype in zip(column_names, datatype_names)
+                ]
+
+                notificationstore = NotificationStore(
+                    datasource, attributes
+                ).create(cursor)
+
+                self.conn.commit()
+
+            datatypes = [datatype_map[name]() for name in datatype_names]
+
+            for dn, timestamp, values in rows:
+                record = Record(
+                    EntityDnRef(dn), timestamp, column_names,
+                    parse_values(datatypes, values)
+                )
+
+                notificationstore.store_record(record)(cursor)
+
+        self.conn.commit()
 
 
 type_map = {
     "trend": TrendStorage,
-    "attribute": AttributeStorage
+    "attribute": AttributeStorage,
+    "notification": NotificationStorage
 }

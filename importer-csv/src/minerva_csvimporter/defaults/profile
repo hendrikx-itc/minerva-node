@@ -28,12 +28,19 @@ field_selector:
 #        config:
 #            names: [x, y, ...]
 
-# Json formatted dictionary defining a mapping for specific columns and values
-# e.g.
-# value_mapping = {"ccr":{"-1":"", "2":"1"}, "cssr":{"-1":"", "2":"1"}}
-# (for mapping '-1' to '' (resulting in a Null value in database)
-# and '2' to '1' for columns ccr and cssr)
-value_mapping:
+column_type:
+#    created:
+#        type: timestamp with time zone
+#        config:
+#            timezone: UTC
+
+# Preprocess values to eliminate or translate values like '-1'.
+preprocess:
+
+#    size:
+#        type: mapping
+#        config:
+#            "-1":
 
 identifier:
     template: "Cell={id}"
@@ -41,23 +48,26 @@ identifier:
     # Applied after the template rendering
     regex: "(.*)"
 
-storage:
-    type: trend
-    config:
-        granularity: 86400
-        timestamp_is_start: false
-
 timestamp:
     type: from_column
     config:
         name: timestamp
+        timezone: UTC
         format: "%Y%m%d_%H%M"
 
 # From filename:
 #	type: from_filename
 #	config:
 #		regex: "[0-9]{12}"
+#       timezone: UTC
 #		format: "%Y%m%d%H%M"
 
 # Current time:
 #	type: now
+
+storage:
+    type: trend
+    config:
+        datasource: csvimporter
+        granularity: 86400
+        timestamp_is_start: false

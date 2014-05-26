@@ -12,34 +12,26 @@ this software.
 import re
 from datetime import datetime
 
+import pytz
+
 from minerva_csvimporter.importer import ConfigurationError
+from minerva_csvimporter.data_extractor import DataExtractor
 
 
-class TimestampExtractor(object):
+class TimestampExtractor(DataExtractor):
     def set_filename(self, filename):
         raise NotImplementedError()
 
-    def set_timezone(self, tzinfo):
-        raise NotImplementedError()
 
-    def from_record(self, record):
-        raise NotImplementedError()
-
-    def check_header(self, header):
-        pass
-
-
-class TimestampFromColumn(object):
-    def __init__(self, name, format):
+class TimestampFromColumn(TimestampExtractor):
+    def __init__(self, name, timezone, format):
         self.column_name = name
+        self.timezone = timezone
         self.timestamp_format = format
-        self.tzinfo = None
+        self.tzinfo = pytz.timezone(timezone)
 
     def set_filename(self, filename):
         pass
-
-    def set_timezone(self, tzinfo):
-        self.tzinfo = tzinfo
 
     def from_record(self, record):
         return self.tzinfo.localize(datetime.strptime(
@@ -47,26 +39,30 @@ class TimestampFromColumn(object):
             self.timestamp_format
         ))
 
-    def check_header(self, header):
-        if not self.column_name in header:
-            raise Exception(
-                "timestamp column '{}' not in header".format(self.column_name)
-            )
+    def header_check(self):
+        def check_for_column_name(header):
+            if not self.column_name in header:
+                raise Exception(
+                    "timestamp column '{}' not in header".format(self.column_name)
+                )
+
+        return check_for_column_name
 
 
 class TimestampFromFilename(object):
-    def __init__(self, pattern, timestamp_format):
+    def __init__(self, pattern, timezone, timestamp_format):
         self.pattern = pattern
         self.regex = re.compile(pattern)
+        self.timezone = timezone
+        self.tzinfo = pytz.timezone(timezone)
         self.timestamp_format = timestamp_format
-        self.naive_timestamp = None
         self.timestamp = None
 
     def set_filename(self, filename):
         m = self.regex.match(filename)
 
         if m:
-            self.naive_timestamp = datetime.strptime(
+            naive_timestamp = datetime.strptime(
                 m.group(1),
                 self.timestamp_format
             )
@@ -75,8 +71,7 @@ class TimestampFromFilename(object):
                 "Could not match timestamp pattern '{}' in filename '{}'".format(
                     self.pattern, filename))
 
-    def set_timezone(self, tzinfo):
-        self.timestamp = tzinfo.localize(self.naive_timestamp)
+        self.timestamp = self.tzinfo.localize(naive_timestamp)
 
     def from_record(self, record):
         return self.timestamp
@@ -84,14 +79,10 @@ class TimestampFromFilename(object):
 
 class TimestampNow(object):
     def __init__(self):
-        self.naive_timestamp = datetime.now()
-        self.timestamp = None
+        self.timestamp = pytz.utc.localize(datetime.utcnow())
 
     def set_filename(self, filename):
         pass
-
-    def set_timezone(self, tzinfo):
-        self.timestamp = tzinfo.localize(self.naive_timestamp)
 
     def from_record(self, record):
         return self.timestamp

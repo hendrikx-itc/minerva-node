@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Command line tool for importing CSV files as trend or attribute data.
+Command line tool for importing CSV files as trend, attribute or notification
+data.
 """
 __docformat__ = "restructuredtext en"
 
@@ -19,43 +20,26 @@ import sys
 import argparse
 from contextlib import closing
 from StringIO import StringIO
-import json
-import re
-from functools import partial
-import operator
+from copy import deepcopy
 
 import yaml
 from configobj import ConfigObj
 from pkg_resources import resource_string
 
 from minerva.instance import MinervaInstance
-from minerva.util import identity, compose
 
 from minerva_csvimporter.importer import import_csv, ConfigurationError
-from minerva_csvimporter.timestamp_extractor import create_timestamp_fn
-from minerva_csvimporter import storage
-from minerva_csvimporter.data_requirements import any_field_empty
-from minerva_csvimporter.dialects import create_dialect
+from minerva_csvimporter.profile import Profile, GRANULARITIES
 
 DEFAULT_CONFIG = resource_string("minerva_csvimporter",
                                  "defaults/import-csv.conf")
 DEFAULT_PROFILE = resource_string("minerva_csvimporter", "defaults/profile")
-
-GRANULARITIES = {
-    "qtr": 900,
-    "hr": 3600,
-    "day": 86400,
-    "week": 604800}
 
 
 def main():
     parser = create_argument_parser()
 
     args = parser.parse_args()
-
-    if args.verbose and args.quiet:
-        parser.error("options -v and -q are mutually exclusive")
-        return 1
 
     if args.file_path is None:
         print("Nothing to do: No csv file specified.")
@@ -65,14 +49,15 @@ def main():
 
     config = get_config(args)
 
-    logging.root.addHandler(logging.StreamHandler())
-    logging.root.setLevel(config["log_level"])
+    if not args.quiet:
+        logging.root.addHandler(logging.StreamHandler())
+        logging.root.setLevel(args.log_level)
 
-    profile = get_profile(config["profile_directory"], args.profile)
+    profile_conf = get_profile(config["profile_directory"], args.profile)
 
-    update_profile_from_args(profile, args)
+    profile_conf = update_profile_from_args(profile_conf, args)
 
-    profile = type_mapping(PROFILE_SCHEMA)(profile)
+    profile = Profile(profile_conf)
 
     _, file_name = os.path.split(args.file_path)
 
@@ -81,16 +66,14 @@ def main():
 
     with closing(minerva_instance.connect(user=user)) as conn:
         logging.info("start processing file {0}".format(args.file_path))
-        logging.info("using identifier {0}".format(profile["identifier"]))
+        logging.debug("using identifier {0}".format(profile.identifier))
 
-        profile["timestamp"].set_filename(file_name)
+        profile.timestamp.set_filename(file_name)
 
         with closing(open(args.file_path, "rb")) as csv_file:
-            import_csv(conn, profile, args.datasource, csv_file)
+            import_csv(conn, profile, csv_file)
 
         logging.info("finished processing file {0}".format(args.file_path))
-
-    logging.info("Done")
 
     return 0
 
@@ -110,13 +93,13 @@ def create_argument_parser():
         "-i", "--instance", default=default_minerva_instance,
         help="name of the target minerva instance")
 
-    parser.add_argument("datasource", help="name of datasource")
+    parser.add_argument("--datasource", help="name of datasource")
 
     parser.add_argument(
         "file_path", nargs="?", help="Path of file that will be processed")
 
     parser.add_argument(
-        "--storage-type", default="trend", help="storage type/format to use")
+        "--storage-type", help="storage type/format to use")
 
     parser.add_argument(
         "--generate-configfile", action=GenerateConfigFileAction, nargs=0,
@@ -134,8 +117,14 @@ def create_argument_parser():
         "-p", "--profile", default="default", help="Name of profile")
 
     parser.add_argument(
-        "-v", "--verbose", action="store_true", dest="verbose",
-        default=False, help="Produce verbose output")
+        "-v", "--verbose", action="store_const", dest="log_level",
+        const=logging.INFO, default=logging.ERROR,
+        help="Produce verbose output")
+
+    parser.add_argument(
+        "--debug", action="store_const", dest="log_level",
+        const=logging.DEBUG, default=logging.ERROR,
+        help="Produce debug output")
 
     parser.add_argument(
         "--ignore-field-mismatches", action="store_true", default=None,
@@ -224,138 +213,43 @@ def get_config(args):
     return config
 
 
-def assure_type(type, map_to_type=None):
-    def fn(value):
-        if value is not None:
-            if isinstance(value, type):
-                return value
-            else:
-                if map_to_type is not None:
-                    return map_to_type(value)
-                else:
-                    return type(value)
-
-    return fn
-
-
-def to_granularity_seconds(g):
-    return int(GRANULARITIES.get(g, g))
-
-
-def to_list(l):
-    return map(str.strip, ",".split(l))
-
-
-def to_bool(b):
-    return b.lower() in ('t', 'true', '1')
-
-
-def to_storage(s):
-    return storage.type_map[s["type"]](**s["config"])
-
-
-def select_fields(names):
-    def fn(all_names):
-        return [name for name in names if name in all_names]
-
-    return fn
-
-
-def exclude_fields(exclude_names):
-    def fn(all_names):
-        return [name for name in all_names if not name in exclude_names]
-
-    return fn
-
-
-def create_field_selector(f):
-    type_name = f["type"]
-
-    if type_name == "select":
-        return select_fields(f["config"]["names"])
-
-    elif type_name == "exclude":
-        return exclude_fields(f["config"]["names"])
-
-    elif type_name == "all":
-        return identity
-
-    else:
-        raise Exception("No such field selector: {}".format(type_name))
-
-
-class IdentifierExtractor(object):
-    def __init__(self, template, regex):
-        self.template = template
-        self.regex = regex
-
-        self.fields = re.findall(r"{(\w+)}", template) or [template]
-
-        if self.fields:
-            #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
-            get_identifier = expand_kwargs(template.format)
-        else:
-            get_identifier = partial(get_value_by_key, identifier)
-
-        extract_ident = partial(extract_identifier, regex)
-
-        self.record_to_dn = compose(extract_ident, get_identifier)
-
-    def __str__(self):
-        return self.template
-
-    def get_dn_from_record(self, record):
-        return self.record_to_dn(record)
-
-    def header_requirements(self):
-        return []
-
-    def record_requirements(self):
-        return [
-            compose(operator.not_, any_field_empty(self.fields))
-        ]
-
-
-def extract_identifier(pattern, value):
-    regex = re.compile(pattern)
-
-    m = regex.match(value)
-
-    return "".join(m.groups())
-
-
-def expand_kwargs(fn):
-    def expander(kwargs):
-        return fn(**kwargs)
-
-    return expander
-
-
-PROFILE_SCHEMA = {
-    "storage": assure_type(storage.Storage, to_storage),
-    "field_selector": create_field_selector,
-    "timezone": str,
-    "ignore_field_mismatches": assure_type(bool, to_bool),
-    "identifier": expand_kwargs(IdentifierExtractor),
-    "timestamp": create_timestamp_fn,
-    "character_encoding": str,
-    "dialect": create_dialect,
-    "value_mapping": assure_type(dict, json.loads)
-}
-
-
 def update_profile_from_args(profile, args):
+    """
+    Return copy of profile, updated with command line arguments.
+    """
+    p_copy = deepcopy(profile)
+
     if args.identifier:
-        profile["identifier"]["template"] = args.identifier
+        p_copy["identifier"]["template"] = args.identifier
 
     if args.identifier_regex:
-        profile["identifier"]["regex"] = args.identifier_regex
+        p_copy["identifier"]["regex"] = args.identifier_regex
 
     if args.character_encoding:
-        profile["character_encoding"] = args.character_encoding
+        p_copy["character_encoding"] = args.character_encoding
+
+    if args.datasource:
+        p_copy["storage"]["config"]["datasource"] = args.datasource
+
+    if args.storage_type:
+        p_copy["storage"]["type"] = args.storage_type
+
+    if args.timestamp_is_start:
+        if p_copy["storage"]["type"] != "trend":
+            raise ConfigurationError(
+                "Option timestamp-is-start can only be used with storage "
+                "type trend"
+            )
+        else:
+            p_copy["storage"]["config"]["timestamp_is_start"] = True
+
+    return p_copy
 
 
 def load_profile(profile_directory, name):
+    """
+    Return dictionary with profile data read from profile named `name`.
+    """
     possible_profile_paths = [
         name,
         os.path.join(profile_directory, name)
@@ -371,24 +265,20 @@ def load_profile(profile_directory, name):
         return yaml.load(open(profile_path))
 
 
-def get_profile(profile_directory, profile_name):
+def get_profile(profile_directory, name):
+    """
+    Return dictionary with profile data merged with default profile.
+    """
     profile = yaml.load(StringIO(DEFAULT_PROFILE))
 
     try:
         profile.update(
-            load_profile(profile_directory, profile_name)
+            load_profile(profile_directory, name)
         )
     except ConfigurationError as exc:
         logging.warn("{} - using defaults".format(exc))
 
     return profile
-
-
-def type_mapping(schema):
-    def fn(data):
-        return {k: schema.get(k)(v) for k, v in data.iteritems()}
-
-    return fn
 
 
 if __name__ == '__main__':

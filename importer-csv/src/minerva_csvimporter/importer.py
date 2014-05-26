@@ -18,10 +18,10 @@ from functools import partial
 import logging.handlers
 import codecs
 
-import pytz
-
 from minerva.util import compose
-from minerva.directory.helpers_v4 import name_to_datasource
+
+from minerva_csvimporter.util import as_functor
+from minerva_csvimporter.values_extractor import ValuesExtractor
 
 
 class DataError(Exception):
@@ -38,126 +38,110 @@ class ConfigurationError(Exception):
     pass
 
 
-def import_csv(conn, profile, datasource_name, csvfile):
-    storage = profile["storage"]
+def import_csv(conn, profile, csv_file):
+    column_names, rows = load_csv(profile, csv_file)
 
-    logging.debug("Storage: {}".format(storage))
-    logging.debug("Data source: {}".format(datasource_name))
-
-    with closing(conn.cursor()) as cursor:
-        datasource = name_to_datasource(cursor, datasource_name)
-
-    conn.commit()
-
-    column_names, raw_data_rows = load_csv(profile, datasource, csvfile)
-
-    storage.connect(conn)
-
-    storage.store_raw(datasource, column_names, raw_data_rows)
+    profile.storage.connect(conn)
+    profile.storage.store(column_names, profile.value_mapping, rows)
 
 
-def load_csv(profile, datasource, csvfile):
-    identifier = profile["identifier"]
-    timestamp = profile["timestamp"]
-    field_selector = profile["field_selector"]
-    ignore_field_mismatches = profile["ignore_field_mismatches"]
-    character_encoding = profile["character_encoding"]
-    dialect = profile["dialect"]
-    value_mapping = profile["value_mapping"]
+def load_csv(profile, csv_file):
+    """
+    Return tuple (column_names, data_rows).
 
-    logging.debug("\n".join([
-        "Importing: {}.".format(csvfile),
-        "Identifier: {}".format(identifier),
-        "Timestamp: {}".format(timestamp)]))
+    column_names - a list with selected column names
+    data_rows - an iterator over row tuples (dn, timestamp, values)
+    """
+    csv_reader = create_csv_reader(profile, csv_file)
 
-    dialect = dialect(csvfile)
+    header = csv_reader.next()
 
-    unicode_reader = codecs.getreader(character_encoding)(csvfile)
+    fields = profile.field_selector(header)
+    values = ValuesExtractor(fields)
 
-    utf8recoder = remove_nul(recode_utf8(unicode_reader))
+    check_header(header, fields)
 
-    csv_reader = csv.reader(utf8recoder, dialect=dialect)
+    header_checks = [
+        check for check in
+        [
+            profile.timestamp.header_check(),
+            profile.identifier.header_check()
+        ]
+        if not check is None
+    ]
 
-    fields = field_selector(csv_reader.next())
+    for check in header_checks:
+        check(header)
 
-    timestamp.check_header(fields)
-
-    unicode_reader.seek(0)
-
-    timestamp.set_timezone(datasource.tzinfo)
-
-    record_checks = []
-
-    record_checks.extend(identifier.record_requirements())
+    record_checks = [
+        check for check in
+        [
+            profile.timestamp.record_check(),
+            profile.identifier.record_check()
+        ]
+        if not check is None
+    ]
 
     include_record = partial(record_passes_checks, record_checks)
 
-    def include_row(line_nr, column_names, row):
-        field_count = len(column_names)
-        value_count = len(row)
-
-        include = True
-
-        if value_count != field_count:
-            msg = (
-                "Field mismatch in line {0} (expected {1} vs found {2}): "
-                "{3}").format(
-                    line_nr, field_count, value_count, row)
-
-            if ignore_field_mismatches:
-                logging.info(msg)
-                include = False
-            else:
-                raise DataError(msg)
-
-        return include
-
-    if value_mapping:
-        extract_values = mapping_values_extractor(fields, value_mapping)
-    else:
-        extract_values = plain_values_extractor(fields)
-
-    extract_raw_data_row = compose(tuple, raw_data_row_extractor(
-        identifier.get_dn_from_record, timestamp.from_record, extract_values
-    ))
+    include_row = create_row_check(header, profile.ignore_field_mismatches)
 
     records = filter(
         include_record,
-        read_records(csv_reader, fields, include_row)
+        (
+            dict(zip(header, [item.decode('utf-8') for item in row]))
+            for line_nr, row in enumerate(csv_reader)
+            if include_row(line_nr, row)
+        )
     )
+
+    extract_raw_data_row = compose(tuple, raw_data_row_extractor(
+        profile.identifier.from_record,
+        profile.timestamp.from_record,
+        values.from_record
+    ))
 
     return fields, map(extract_raw_data_row, records)
 
 
+def create_csv_reader(profile, csv_file):
+    dialect = profile.dialect(csv_file)
+
+    unicode_reader = codecs.getreader(profile.character_encoding)(csv_file)
+
+    # Recoding to UTF-8 and NULL byte filtering are required for the standard
+    # csv.reader: https://docs.python.org/2/library/csv.html
+    utf8recoder = remove_nul(recode_utf8(unicode_reader))
+
+    return csv.reader(utf8recoder, dialect=dialect)
+
+
 def raw_data_row_extractor(*args):
     def fn(record):
-        return map(as_functor(record), args)
+        return list(map(as_functor(record), args))
 
     return fn
 
 
-def as_functor(x):
-    def fmap(f):
-        return f(x)
+def create_row_check(expected_columns, ignore_field_mismatches):
+    def include_row(line_nr, row):
+        field_count = len(expected_columns)
+        value_count = len(row)
 
-    return fmap
+        if value_count != field_count:
+            msg = (
+                "Field mismatch in line {0} (expected {1} vs found {2}): {3}"
+            ).format(line_nr, field_count, value_count, row)
 
+            if ignore_field_mismatches:
+                logging.info(msg)
+                return False
+            else:
+                raise DataError(msg)
 
-def mapping_values_extractor(fields, value_mapping):
-    def fn(record):
-        return [
-            value_mapping.get(field, {}).get(record[field], record[field])
-            for field in fields
-        ]
+        return True
 
-    return fn
-
-
-def plain_values_extractor(fields):
-    def fn(record):
-        return [record[field] for field in fields]
-
-    return fn
+    return include_row
 
 
 def record_passes_checks(checks, record):
@@ -170,40 +154,12 @@ def is_field_empty(field_name, record):
     return record[field_name] == ""
 
 
-def get_value_by_key(key, record, default=None):
-    """
-    Return value with key `key` from `record` or otherwise `default`.
-
-    This has the same function as dict.get, but with different argument order
-    to support partial application.
-
-    """
-    v = record[key]
-    if v:
-        return v
-    else:
-        return default
-
-
-def get_value_by_index(index, iterable):
-    return iterable[index]
-
-
-def offset_timestamp(offset, timestamp):
-    ts_with_offset = (timestamp.astimezone(pytz.utc) + offset).astimezone(
-        timestamp.tzinfo)
-    #Deal with DST
-    utc_offset_delta = timestamp.utcoffset() - ts_with_offset.utcoffset()
-
-    return ts_with_offset + utc_offset_delta
-
-
 def parse_timestamp(tzinfo, timestamp_format, timestamp_string):
     return tzinfo.localize(
         datetime.strptime(timestamp_string, timestamp_format))
 
 
-def check_header(header):
+def check_header(header, required_fields):
     """
     Return None if header is OK, otherwise raise exception.
     """
@@ -216,6 +172,14 @@ def check_header(header):
     if duplicates:
         raise DataError("Ambiguous field(s) found in header: {}.".format(
             ", ".join(duplicates)))
+
+    missing_fields = [
+        field for field in required_fields if not field in header
+    ]
+
+    if missing_fields:
+        raise DataError(
+            "Field(s) {} not found in header".format(missing_fields))
 
 
 def get_duplicates(strings):
@@ -234,24 +198,6 @@ def get_duplicates(strings):
             duplicates.append(string)
 
     return duplicates
-
-
-def read_records(csv_reader, fields, include_row):
-    column_names = csv_reader.next()
-
-    check_header(column_names)
-
-    missing_fields = [field for field in fields if not field in column_names]
-
-    if missing_fields:
-        raise DataError(
-            "Field(s) {} not found in header".format(missing_fields))
-
-    for line_nr, row in enumerate(csv_reader):
-        if include_row(line_nr, column_names, row):
-            yield dict(
-                zip(column_names, (item.decode('utf-8') for item in row))
-            )
 
 
 def get_alias_type_id(conn, alias_type_name):
