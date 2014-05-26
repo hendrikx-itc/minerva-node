@@ -42,7 +42,7 @@ def import_csv(conn, profile, csv_file):
     column_names, rows = load_csv(profile, csv_file)
 
     profile.storage.connect(conn)
-    profile.storage.store(column_names, profile.value_mapping, rows)
+    profile.storage.store(column_names, profile.fields, rows)
 
 
 def load_csv(profile, csv_file):

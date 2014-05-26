@@ -28,7 +28,7 @@ class DataType(object):
 class DataTypeTimestampWithTimeZone(DataType):
     name = 'timestamp with time zone'
 
-    def __init__(self, format, timezone=pytz.utc):
+    def __init__(self, format=None, timezone=pytz.utc):
         self.format = format
 
         if isinstance(timezone, tzinfo):

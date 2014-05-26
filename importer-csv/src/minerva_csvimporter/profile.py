@@ -26,7 +26,7 @@ GRANULARITIES = {
     "week": 604800}
 
 
-def assure_type(required_type, map_to_type=None):
+def ensure_type(required_type, map_to_type=None):
     def fn(value):
         if value is not None:
             if isinstance(value, required_type):
@@ -82,7 +82,7 @@ def exclude_fields(exclude_names):
 
 
 def create_value_mapping(conf):
-    return datatype.type_map[conf["type"]](**conf["config"]).from_string
+    return datatype.type_map[conf["type"]](**conf["config"])
 
 
 def create_row_mapping(conf):
@@ -99,24 +99,20 @@ def to_granularity_seconds(g):
     return int(GRANULARITIES.get(g, g))
 
 
-def to_list(l):
-    return map(str.strip, ",".split(l))
-
-
 def to_bool(b):
     return b.lower() in ('t', 'true', '1')
 
 
 PROFILE_SCHEMA = {
-    "storage": assure_type(storage.Storage, to_storage),
+    "storage": ensure_type(storage.Storage, to_storage),
     "field_selector": create_field_selector,
     "timezone": str,
-    "ignore_field_mismatches": assure_type(bool, to_bool),
+    "ignore_field_mismatches": ensure_type(bool, to_bool),
     "identifier": expand_kwargs(IdentifierExtractor),
     "timestamp": create_timestamp_fn,
     "character_encoding": str,
     "dialect": create_dialect,
-    "value_mapping": create_row_mapping
+    "fields": create_row_mapping
 }
 
 
