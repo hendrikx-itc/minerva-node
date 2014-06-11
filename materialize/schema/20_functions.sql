@@ -109,13 +109,10 @@ $$ LANGUAGE SQL STABLE;
 
 
 CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
-	RETURNS void
+	RETURNS bigint
 AS $$
-	SELECT trend.add_trend_to_trendstore($2, name, datatype)
-	FROM trend.table_columns('trend', trend.to_base_table_name($1))
-	WHERE name NOT IN (
-		SELECT name FROM trend.table_columns('trend', trend.to_base_table_name($2))
-	);
+	SELECT count(trend.add_trend_to_trendstore($2, name, datatype))
+	FROM materialization.missing_columns($1, $2);
 $$ LANGUAGE SQL VOLATILE;
 
 COMMENT ON FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
@@ -124,7 +121,7 @@ trendstore but not yet in the destination.';
 
 
 CREATE OR REPLACE FUNCTION add_missing_trends(materialization.type)
-	RETURNS void
+	RETURNS bigint
 AS $$
 	SELECT materialization.add_missing_trends(src, dst)
 	FROM trend.trendstore src, trend.trendstore dst
