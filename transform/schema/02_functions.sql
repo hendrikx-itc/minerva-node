@@ -398,50 +398,21 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION add_array(bigint[], integer[]) RETURNS bigint[]
+CREATE OR REPLACE FUNCTION add_array(anyarray, anyarray) RETURNS anyarray
 AS $$
-SELECT array_agg((arr1 + arr2)::bigint)::bigint[] FROM
+SELECT array_agg((arr1 + arr2)) FROM
 (
 	SELECT
-	unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
-	unnest($2[1:least(array_length($1,1), array_length($2,1))]) AS arr2
-) AS foo;
-$$ LANGUAGE SQL IMMUTABLE;
-
-
-CREATE OR REPLACE FUNCTION add_array(bigint[], smallint[]) RETURNS bigint[]
-AS $$
-SELECT array_agg((arr1 + arr2)::bigint)::bigint[] FROM
-(
-	SELECT
-	unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
-	unnest($2[1:least(array_length($1,1), array_length($2,1))]) AS arr2
+		unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
+		unnest($2[1:least(array_length($1,1), array_length($2,1))]) AS arr2
 ) AS foo;
 $$ LANGUAGE SQL STABLE STRICT;
 
 
-CREATE AGGREGATE sum_array (integer[])
+CREATE AGGREGATE sum_array(anyarray)
 (
-    sfunc = add_array,
-    stype = bigint[]
-);
-
-
-CREATE OR REPLACE FUNCTION add_array(double precision[], double precision[]) RETURNS double precision[]
-AS $$
-SELECT array_agg(arr1 + arr2) FROM
-(
-	SELECT
-	unnest($1[1:least(array_length($1,1), array_length($2,1))]) AS arr1,
-	unnest($2[1:least(array_length($1,1), array_length($2,1))]) AS arr2
-) AS foo;
-$$ LANGUAGE SQL STABLE STRICT;
-
-
-CREATE AGGREGATE sum_array (double precision[])
-(
-    sfunc = add_array,
-    stype = double precision[]
+	sfunc = add_array,
+	stype = anyarray
 );
 
 
@@ -504,7 +475,7 @@ SELECT sum(t) FROM unnest($1) t;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 
-CREATE OR REPLACE FUNCTION array_sum(bigint[]) RETURNS numeric 
+CREATE OR REPLACE FUNCTION array_sum(bigint[]) RETURNS numeric
 AS $$
 SELECT sum(t) FROM unnest($1) t;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
