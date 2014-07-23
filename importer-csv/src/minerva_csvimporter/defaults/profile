@@ -18,6 +18,9 @@ ignore_field_mismatches: false
 field_selector:
     type: all
 
+
+fields: []
+
 # Select explicit set of columns
 #        type: select
 #        config:
