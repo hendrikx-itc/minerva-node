@@ -18,90 +18,147 @@ from minerva.storage import datatype
 
 
 class DataType(object):
-    def from_string(self, value):
+    @classmethod
+    def string_parser_config(cls, config):
         raise NotImplementedError()
 
-    def to_string(self, value):
+    @classmethod
+    def string_parser(cls, config):
         raise NotImplementedError()
+
+    @classmethod
+    def string_serializer(cls, config):
+        raise NotImplementedError()
+
+
+def assure_tzinfo(tz):
+    if isinstance(tz, tzinfo):
+        return tz
+    else:
+        return pytz.timezone(tz)
 
 
 class DataTypeTimestampWithTimeZone(DataType):
     name = 'timestamp with time zone'
 
-    def __init__(self, format=None, timezone=pytz.utc):
-        self.format = format
+    @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config["null_value"],
+            "tzinfo": assure_tzinfo(config["tzinfo"]),
+            "format": config["format"]
+        }
 
-        if isinstance(timezone, tzinfo):
-            self.tzinfo = timezone
-        elif isinstance(timezone, str):
-            self.tzinfo = pytz.timezone(timezone)
+    @classmethod
+    def string_parser(cls, config):
+        """
+        Return function that can parse a string representation of a TimestampWithTimeZone value.
 
-    def from_string(self, value):
-        return self.tzinfo.localize(datetime.strptime(value, self.format))
+        :param config: a dictionary with the form {"tzinfo", <tzinfo>, "format", <format_string>}
+        :return: a function (str_value) -> value
+        """
+        null_value = config["null_value"]
+        tz = config["tzinfo"]
+        format_str = config["format"]
+
+        def parse(value):
+            if value == null_value:
+                return None
+            else:
+                return tz.localize(datetime.strptime(value, format_str))
+
+        return parse
 
 
 class DataTypeTimestamp(DataType):
     name = 'timestamp'
 
-    def __init__(self, format):
-        self.format = format
+    @classmethod
+    def string_parser(cls, config):
+        def parse(value):
+            if value == config["null_value"]:
+                return None
+            else:
+                return datetime.strptime(value, config["format"])
 
-    def from_string(self, value):
-        return datetime.strptime(value, self.format)
+        return parse
 
 
 class DataTypeSmallInt(DataType):
     name = 'smallint'
 
-    def from_string(self, value):
-        if value:
-            return int(value)
-        else:
-            return None
+    @classmethod
+    def string_parser(cls, config):
+        def parse(value):
+            if value == config["null_value"]:
+                return None
+            else:
+                return int(value)
+
+        return parse
 
 
 class DataTypeInteger(DataType):
     name = 'integer'
 
-    def from_string(self, value):
-        if value:
-            return int(value)
-        else:
-            return None
+    @classmethod
+    def string_parser(cls, config):
+        def parse(value):
+            if value == config["null_value"]:
+                return None
+            else:
+                return int(value)
+
+        return parse
 
 
 class DataTypeReal(DataType):
     name = 'real'
 
-    def from_string(self, value):
-        """
-        Parse value and return float value. If value is empty ('') or None,
-        None is returned.
-        :param value: string representation of a real value, e.g.; '34.00034',
-        '343', ''
-        :return: float value
-        """
-        if value:
-            return float(value)
-        else:
-            return None
+    @classmethod
+    def string_parser(cls, config):
+        def parse(value):
+            """
+            Parse value and return float value. If value is empty ('') or None,
+            None is returned.
+            :param value: string representation of a real value, e.g.; '34.00034',
+            '343', ''
+            :return: float value
+            """
+            if value == config["null_value"]:
+                return None
+            else:
+                return float(value)
+
+        return parse
 
 
 class DataTypeDoublePrecision(DataType):
     name = 'double precision'
 
-    def from_string(self, value):
-        if value:
-            return float(value)
-        else:
-            return None
+    @classmethod
+    def string_parser(cls, config):
+        def parse(value):
+            if value == config["null_value"]:
+                return None
+            else:
+                return float(value)
+
+        return parse
 
 
 class DataTypeText(DataType):
     name = 'text'
 
-    def from_string(self, value):
-        return value
+    @classmethod
+    def string_parser(cls, config):
+        def parse(value):
+            if value == config["null_value"]:
+                return None
+            else:
+                return value
+
+        return parse
 
 
 data_types = [
@@ -143,3 +200,16 @@ def deduce_data_types(rows):
 
 
 types_from_values = partial(map, datatype.deduce_from_value)
+
+
+def load_data_format(format):
+    datatype_name = format["datatype"]
+
+    try:
+        data_type = type_map[datatype_name]
+    except KeyError:
+        raise Exception("No such data type: {}".format(datatype_name))
+    else:
+        config = data_type.string_parser_config(format["string_format"])
+
+        return data_type, data_type.string_parser(config)
