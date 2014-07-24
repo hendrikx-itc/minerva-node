@@ -19,7 +19,7 @@ setup(
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=3", "configobj"],
     test_suite="nose.collector",
-    packages=["minerva_csvimporter"],
+    packages=["minerva_csvimporter", "minerva_csvimporter/storage"],
     package_dir={"": "src"},
     package_data={"minerva_csvimporter": ["defaults/*"]},
     scripts=["scripts/import-csv"])
