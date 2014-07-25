@@ -10,21 +10,14 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import operator
-from functools import partial
-from datetime import timedelta
 from contextlib import closing
-
-import pytz
 
 from minerva.directory.basetypes import DataSource
 from minerva.storage.notification.entityref import EntityDnRef
 from minerva.storage.notification.types import NotificationStore, Record, Attribute
-from minerva.util import grouped_by, identity
 
-from minerva_csvimporter.datatype import deduce_data_types, parse_values, type_map as datatype_map
+from minerva_csvimporter.datatype import deduce_data_types, type_map as datatype_map
 from minerva_csvimporter.columndescriptor import ColumnDescriptor
-
-
 from minerva_csvimporter.storage.storage import Storage
 
 
@@ -61,7 +54,9 @@ class NotificationStorage(Storage):
 
                         if configured_descriptor:
                             if configured_descriptor.data_type.name != notificationstore_type:
-                                raise Exception("Attribute({} {}) type of notificationstore does not match configured type: {}".format(name, notificationstore_type, configured_type.name))
+                                raise Exception("Attribute({} {}) type of notificationstore does not match configured"
+                                                " type: {}".format(name, notificationstore_type,
+                                                                   configured_descriptor.data_type.name))
 
                             yield configured_descriptor
                         else:
