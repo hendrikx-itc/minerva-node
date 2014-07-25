@@ -44,8 +44,8 @@ class DataTypeTimestampWithTimeZone(DataType):
     @classmethod
     def string_parser_config(cls, config):
         return {
-            "null_value": config["null_value"],
-            "tzinfo": assure_tzinfo(config["tzinfo"]),
+            "null_value": config.get("null_value", "\\N"),
+            "timezone": assure_tzinfo(config.get("timezone", "UTC")),
             "format": config["format"]
         }
 
@@ -54,11 +54,11 @@ class DataTypeTimestampWithTimeZone(DataType):
         """
         Return function that can parse a string representation of a TimestampWithTimeZone value.
 
-        :param config: a dictionary with the form {"tzinfo", <tzinfo>, "format", <format_string>}
+        :param config: a dictionary with the form {"timezone", <tzinfo>, "format", <format_string>}
         :return: a function (str_value) -> value
         """
         null_value = config["null_value"]
-        tz = config["tzinfo"]
+        tz = config["timezone"]
         format_str = config["format"]
 
         def parse(value):
@@ -72,6 +72,12 @@ class DataTypeTimestampWithTimeZone(DataType):
 
 class DataTypeTimestamp(DataType):
     name = 'timestamp'
+
+    @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config.get("null_value", "\\N")
+        }
 
     @classmethod
     def string_parser(cls, config):
@@ -88,6 +94,12 @@ class DataTypeSmallInt(DataType):
     name = 'smallint'
 
     @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config.get("null_value", "\\N")
+        }
+
+    @classmethod
     def string_parser(cls, config):
         def parse(value):
             if value == config["null_value"]:
@@ -102,6 +114,12 @@ class DataTypeInteger(DataType):
     name = 'integer'
 
     @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config.get("null_value", "\\N")
+        }
+
+    @classmethod
     def string_parser(cls, config):
         def parse(value):
             if value == config["null_value"]:
@@ -114,6 +132,12 @@ class DataTypeInteger(DataType):
 
 class DataTypeReal(DataType):
     name = 'real'
+
+    @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config.get("null_value", "\\N")
+        }
 
     @classmethod
     def string_parser(cls, config):
@@ -137,6 +161,12 @@ class DataTypeDoublePrecision(DataType):
     name = 'double precision'
 
     @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config.get("null_value", "\\N")
+        }
+
+    @classmethod
     def string_parser(cls, config):
         def parse(value):
             if value == config["null_value"]:
@@ -149,6 +179,12 @@ class DataTypeDoublePrecision(DataType):
 
 class DataTypeText(DataType):
     name = 'text'
+
+    @classmethod
+    def string_parser_config(cls, config):
+        return {
+            "null_value": config.get("null_value", "\\N")
+        }
 
     @classmethod
     def string_parser(cls, config):

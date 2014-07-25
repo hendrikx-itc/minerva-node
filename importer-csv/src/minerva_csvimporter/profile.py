@@ -16,7 +16,7 @@ from minerva_csvimporter.identifier_extractor import IdentifierExtractor
 from minerva_csvimporter.timestamp_extractor import create_timestamp_fn
 from minerva_csvimporter.dialects import create_dialect
 from minerva_csvimporter.util import expand_kwargs
-from minerva_csvimporter import datatype
+from minerva_csvimporter.columndescriptor import create_column_descriptor
 
 
 GRANULARITIES = {
@@ -81,14 +81,10 @@ def exclude_fields(exclude_names):
     return fn
 
 
-def create_value_mapping(conf):
-    return datatype.type_map[conf["type"]](**conf["config"])
-
-
 def create_row_mapping(conf):
     if conf:
         return {
-            name: create_value_mapping(sub_conf)
+            name: create_column_descriptor(name, sub_conf)
             for name, sub_conf in conf.iteritems()
         }
     else:

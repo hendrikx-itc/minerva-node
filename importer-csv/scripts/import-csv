@@ -239,6 +239,13 @@ def update_profile_from_args(profile, args):
         else:
             p_copy["storage"]["config"]["timestamp_is_start"] = True
 
+    if args.timestamp_column:
+        p_copy["timestamp"]["type"] = "from_column"
+        p_copy["timestamp"]["config"]["name"] = args.timestamp_column
+
+    if args.timestamp_format:
+        p_copy["timestamp"]["config"]["format"] = args.timestamp_format
+
     return p_copy
 
 

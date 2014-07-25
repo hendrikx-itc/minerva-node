@@ -18,9 +18,6 @@ ignore_field_mismatches: false
 field_selector:
     type: all
 
-
-fields: []
-
 # Select explicit set of columns
 #        type: select
 #        config:
@@ -31,11 +28,12 @@ fields: []
 #        config:
 #            names: [x, y, ...]
 
-column_type:
-#    created:
-#        type: timestamp with time zone
-#        config:
-#            timezone: UTC
+fields:
+- name: created
+  datatype: timestamp with time zone
+  string_format:
+    format: "%Y%m%d %H:%M:%S"
+    timezone: UTC
 
 # Preprocess values to eliminate or translate values like '-1'.
 preprocess:

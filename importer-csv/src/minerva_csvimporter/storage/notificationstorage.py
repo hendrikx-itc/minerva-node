@@ -22,6 +22,7 @@ from minerva.storage.notification.types import NotificationStore, Record, Attrib
 from minerva.util import grouped_by, identity
 
 from minerva_csvimporter.datatype import deduce_data_types, parse_values, type_map as datatype_map
+from minerva_csvimporter.columndescriptor import ColumnDescriptor
 
 
 from minerva_csvimporter.storage.storage import Storage
@@ -54,17 +55,17 @@ class NotificationStorage(Storage):
 
                 def merge_datatypes():
                     for name in column_names:
-                        configured_type = fields.get(name)
+                        configured_descriptor = fields.get(name)
 
                         notificationstore_type = datatype_dict[name]
 
-                        if configured_type:
-                            if configured_type.name != notificationstore_type:
-                                raise Exception("Attribute type of notificationstore does not match configured type {} <> {}".format(notificationstore_type, configured_type.name))
+                        if configured_descriptor:
+                            if configured_descriptor.data_type.name != notificationstore_type:
+                                raise Exception("Attribute({} {}) type of notificationstore does not match configured type: {}".format(name, notificationstore_type, configured_type.name))
 
-                            yield configured_type
+                            yield configured_descriptor
                         else:
-                            yield datatype_map[notificationstore_type]()
+                            yield ColumnDescriptor(name, datatype_map[notificationstore_type], {})
 
                 datatypes = list(merge_datatypes())
             else:
@@ -74,12 +75,12 @@ class NotificationStorage(Storage):
 
                 def merge_datatypes():
                     for column_name, datatype_name in zip(column_names, deduced_datatype_names):
-                        configured_type = fields.get(column_name)
+                        configured_descriptor = fields.get(column_name)
 
-                        if configured_type:
-                            yield configured_type
+                        if configured_descriptor:
+                            yield configured_descriptor
                         else:
-                            yield datatype_map[datatype_name]()
+                            yield ColumnDescriptor(column_name, datatype_map[datatype_name], {})
 
                 datatypes = list(merge_datatypes())
 
@@ -94,10 +95,12 @@ class NotificationStorage(Storage):
 
                 self.conn.commit()
 
+            parsers = [datatype.string_parser() for datatype in datatypes]
+
             for dn, timestamp, values in rows:
                 record = Record(
                     EntityDnRef(dn), timestamp, column_names,
-                    parse_values(datatypes, values)
+                    [parse(value) for parse, value in zip(parsers, values)]
                 )
 
                 notificationstore.store_record(record)(cursor)
