@@ -23,7 +23,8 @@ CREATE TABLE type (
 	processing_delay interval NOT NULL,
 	stability_delay interval NOT NULL,
 	reprocessing_period interval NOT NULL,
-	enabled boolean NOT NULL DEFAULT FALSE
+	enabled boolean NOT NULL DEFAULT FALSE,
+    cost integer NOT NULL DEFAULT 10
 );
 
 COMMENT ON COLUMN type.src_trendstore_id IS
@@ -140,3 +141,17 @@ ALTER TABLE ONLY type_tag_link
 GRANT ALL ON TABLE type_tag_link TO minerva_admin;
 GRANT SELECT ON TABLE type_tag_link TO minerva;
 GRANT INSERT,DELETE,UPDATE ON TABLE type_tag_link TO minerva_writer;
+
+
+-- Table 'group_priority'
+
+CREATE TABLE group_priority (
+    tag_id integer references directory.tag(id) PRIMARY KEY,
+    resources integer not null default 500
+);
+
+ALTER TABLE group_priority OWNER TO minerva_admin;
+
+GRANT ALL ON TABLE group_priority TO minerva_admin;
+GRANT SELECT ON TABLE group_priority TO minerva;
+GRANT INSERT,DELETE,UPDATE ON TABLE group_priority TO minerva_writer;
