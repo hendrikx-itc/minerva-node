@@ -85,14 +85,34 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE TYPE materialization_result AS (processed_max_modified timestamp with time zone, row_count integer);
 
 
-CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
-	RETURNS void
+CREATE OR REPLACE FUNCTION missing_columns(src trend.trendstore, dst trend.trendstore)
+	RETURNS TABLE (name character varying, datatype character varying)
 AS $$
-	SELECT trend.add_trend_to_trendstore($2, name, datatype)
+	SELECT name, datatype
 	FROM trend.table_columns('trend', trend.to_base_table_name($1))
 	WHERE name NOT IN (
 		SELECT name FROM trend.table_columns('trend', trend.to_base_table_name($2))
 	);
+$$ LANGUAGE SQL STABLE;
+
+COMMENT ON FUNCTION missing_columns(src trend.trendstore, dst trend.trendstore)
+IS 'The set of table columns (name, datatype) that exist in the source trendstore but not yet in the destination.';
+
+
+CREATE OR REPLACE FUNCTION missing_columns(materialization.type)
+	RETURNS TABLE (name character varying, datatype character varying)
+AS $$
+	SELECT materialization.missing_columns(src, dst)
+	FROM trend.trendstore src, trend.trendstore dst
+	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+$$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
+	RETURNS bigint
+AS $$
+	SELECT count(trend.add_trend_to_trendstore($2, name, datatype))
+	FROM materialization.missing_columns($1, $2);
 $$ LANGUAGE SQL VOLATILE;
 
 COMMENT ON FUNCTION add_missing_trends(src trend.trendstore, dst trend.trendstore)
@@ -101,7 +121,7 @@ trendstore but not yet in the destination.';
 
 
 CREATE OR REPLACE FUNCTION add_missing_trends(materialization.type)
-	RETURNS void
+	RETURNS bigint
 AS $$
 	SELECT materialization.add_missing_trends(src, dst)
 	FROM trend.trendstore src, trend.trendstore dst
@@ -364,6 +384,13 @@ AS $$
 $$ LANGUAGE SQL IMMUTABLE;
 
 
+CREATE OR REPLACE FUNCTION runnable(materialization.type, materialization.state)
+	RETURNS boolean
+AS $$
+	SELECT materialization.runnable($1, $2.timestamp, $2.max_modified);
+$$ LANGUAGE SQL IMMUTABLE;
+
+
 CREATE OR REPLACE FUNCTION open_job_slots(slot_count integer)
 	RETURNS integer
 AS $$
@@ -398,7 +425,8 @@ BEGIN
 		JOIN materialization.tagged_runnable_materializations rj ON
 			replicated_state.type_id = rj.type_id
 				AND
-			replicated_state.timestamp = rj.timestamp;
+			replicated_state.timestamp = rj.timestamp
+        WHERE materialization.no_slave_lag();
 	END IF;
 END;
 $$ LANGUAGE plpgsql;
@@ -648,3 +676,22 @@ CREATE OR REPLACE FUNCTION dependencies(name text)
 AS $$
 	SELECT materialization.dependencies(trendstore) FROM trend.trendstore WHERE trend.to_char(trendstore) = $1;
 $$ LANGUAGE SQL STABLE;
+
+
+CREATE OR REPLACE FUNCTION no_slave_lag()
+    RETURNS boolean
+    LANGUAGE sql
+AS $$SELECT bytes_lag < 10000000
+FROM metric.replication_lag
+WHERE client_addr = '192.168.42.19';$$;
+
+
+CREATE OR REPLACE FUNCTION materialization.create_jobs()
+    RETURNS integer
+    LANGUAGE sql
+AS $function$
+    SELECT COUNT(materialization.create_job(num.type_id, timestamp))::integer
+    FROM materialization.next_up_materializations num
+    WHERE NOT job_active AND materialization.no_slave_lag();
+$function$;
+
