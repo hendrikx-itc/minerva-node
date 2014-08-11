@@ -333,9 +333,12 @@ they do not exist.';
 CREATE OR REPLACE FUNCTION define(trend.view)
 	RETURNS materialization.type
 AS $$
-	SELECT materialization.define(
-		ts,
-		trend.attributes_to_trendstore(substring(ds.name, '^v(.*)'), et.name, ts.granularity))
+	SELECT materialization.add_missing_trends(
+		 materialization.define(
+			ts,
+			trend.attributes_to_trendstore(substring(ds.name, '^v(.*)'), et.name, ts.granularity)
+		)
+	)
 	FROM trend.trendstore ts
 	JOIN directory.datasource ds on ds.id = ts.datasource_id
 	JOIN directory.entitytype et on et.id = ts.entitytype_id
