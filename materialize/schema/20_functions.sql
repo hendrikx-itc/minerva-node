@@ -121,11 +121,13 @@ trendstore but not yet in the destination.';
 
 
 CREATE OR REPLACE FUNCTION add_missing_trends(materialization.type)
-	RETURNS bigint
+	RETURNS materialization.type
 AS $$
 	SELECT materialization.add_missing_trends(src, dst)
 	FROM trend.trendstore src, trend.trendstore dst
 	WHERE src.id = $1.src_trendstore_id AND dst.id = $1.dst_trendstore_id;
+
+	SELECT $1;
 $$ LANGUAGE SQL VOLATILE;
 
 
@@ -307,9 +309,12 @@ $$ LANGUAGE SQL VOLATILE;
 CREATE OR REPLACE FUNCTION define(trend.trendstore)
 	RETURNS materialization.type
 AS $$
-	SELECT materialization.define(
-		$1,
-	trend.attributes_to_trendstore(substring(ds.name, '^v(.*)'), et.name, ts.granularity))
+	SELECT materialization.add_missing_trends(
+		materialization.define(
+			$1,
+			trend.attributes_to_trendstore(substring(ds.name, '^v(.*)'), et.name, ts.granularity)
+		)
+	)
 	FROM trend.view
 	JOIN trend.trendstore ts on ts.id = view.trendstore_id
 	JOIN directory.datasource ds on ds.id = ts.datasource_id
