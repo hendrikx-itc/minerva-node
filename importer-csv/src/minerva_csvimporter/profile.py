@@ -103,7 +103,6 @@ PROFILE_SCHEMA = {
     "storage": ensure_type(storage.Storage, to_storage),
     "field_selector": create_field_selector,
     "timezone": str,
-    "ignore_field_mismatches": ensure_type(bool, to_bool),
     "identifier": expand_kwargs(IdentifierExtractor),
     "timestamp": create_timestamp_fn,
     "character_encoding": str,

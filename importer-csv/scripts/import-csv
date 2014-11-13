@@ -123,10 +123,6 @@ def create_argument_parser():
         help="Produce debug output")
 
     parser.add_argument(
-        "--ignore-field-mismatches", action="store_true", default=None,
-        help="ignore lines with more or less fields than found in header")
-
-    parser.add_argument(
         "-q", "--quiet", action="store_true", dest="quiet", default=False,
         help="produce output to log file")
 

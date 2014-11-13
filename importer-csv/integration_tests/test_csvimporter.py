@@ -11,7 +11,6 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import StringIO
-import codecs
 
 from minerva_csvimporter import import_csv
 from minerva_csvimporter.profile import Profile
@@ -52,7 +51,6 @@ def test_timestamp_source_data():
         "field_selector": {
             "type": "all"
         },
-        "ignore_field_mismatches": False,
         "timestamp_is_start": True,
         "character_encoding": "utf-8",
         "dialect": {
@@ -97,7 +95,6 @@ def test_timestamp_as_data():
         "field_selector": {
             "type": "all"
         },
-        "ignore_field_mismatches": False,
         "timestamp_is_start": True,
         "character_encoding": "utf-8",
         "dialect": {

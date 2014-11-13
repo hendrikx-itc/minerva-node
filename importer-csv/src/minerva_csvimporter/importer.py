@@ -84,7 +84,7 @@ def load_csv(profile, csv_file):
 
     include_record = partial(record_passes_checks, record_checks)
 
-    include_row = create_row_check(header, profile.ignore_field_mismatches)
+    include_row = create_row_check(header)
 
     records = filter(
         include_record,
@@ -123,9 +123,10 @@ def raw_data_row_extractor(*args):
     return fn
 
 
-def create_row_check(expected_columns, ignore_field_mismatches):
+def create_row_check(expected_columns):
+    field_count = len(expected_columns)
+
     def include_row(line_nr, row):
-        field_count = len(expected_columns)
         value_count = len(row)
 
         if value_count != field_count:
@@ -133,11 +134,7 @@ def create_row_check(expected_columns, ignore_field_mismatches):
                 "Field mismatch in line {0} (expected {1} vs found {2}): {3}"
             ).format(line_nr, field_count, value_count, row)
 
-            if ignore_field_mismatches:
-                logging.info(msg)
-                return False
-            else:
-                raise DataError(msg)
+            raise DataError(msg)
 
         return True
 
