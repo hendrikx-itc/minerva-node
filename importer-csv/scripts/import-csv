@@ -55,21 +55,31 @@ def main():
 
     profile = Profile(profile_conf)
 
-    _, file_name = os.path.split(args.file_path)
+    if args.infile.name:
+        _, file_name = os.path.split(args.infile.name)
+    else:
+        file_name = None
 
     config_user = config.get("database", {}).get("user")
     user = config_user or args.user or "minerva_admin"
 
     with closing(minerva_instance.connect(user=user)) as conn:
-        logging.info("start processing file {0}".format(args.file_path))
+        if args.infile is sys.stdin:
+            logging.info("start processing from stdin")
+        else:
+            logging.info("start processing file {0}".format(args.infile.name))
         logging.debug("using identifier {0}".format(profile.identifier))
 
         profile.timestamp.set_filename(file_name)
 
-        with closing(open(args.file_path, "rb")) as csv_file:
-            import_csv(conn, profile, csv_file)
+        infile = StringIO(args.infile.read())
 
-        logging.info("finished processing file {0}".format(args.file_path))
+        import_csv(conn, profile, infile)
+
+        if args.infile is sys.stdin:
+            logging.info("finished processing from stdin")
+        else:
+            logging.info("finished processing file {0}".format(args.infile.name))
 
     return 0
 
@@ -92,7 +102,8 @@ def create_argument_parser():
     parser.add_argument("--datasource", help="name of datasource")
 
     parser.add_argument(
-        "file_path", help="Path of file that will be processed")
+        "infile", nargs='?', type=argparse.FileType('rb'),
+        help="Path of file that will be processed", default=sys.stdin)
 
     parser.add_argument(
         "--storage-type", help="storage type/format to use")
