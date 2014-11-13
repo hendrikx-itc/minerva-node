@@ -29,11 +29,11 @@ field_selector:
 #            names: [x, y, ...]
 
 fields:
-- name: created
-  datatype: timestamp with time zone
-  string_format:
-    format: "%Y%m%d %H:%M:%S"
-    timezone: UTC
+    created:
+        datatype: timestamp with time zone
+        string_format:
+            format: "%Y%m%d %H:%M:%S"
+            timezone: UTC
 
 # Preprocess values to eliminate or translate values like '-1'.
 preprocess:
