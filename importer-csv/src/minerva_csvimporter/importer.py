@@ -15,7 +15,6 @@ import csv
 from datetime import datetime
 from contextlib import closing
 from functools import partial
-import logging.handlers
 import codecs
 
 from minerva.util import compose
