@@ -88,9 +88,35 @@ class TimestampNow(object):
         return self.timestamp
 
 
+class TimestampFixed(object):
+    def __init__(self, timestamp, format):
+        self.timestamp = timestamp
+        self.format = format
+
+    def set_filename(self, filename):
+        pass
+
+    def header_check(self):
+        def check_for_column_name(header):
+            pass
+
+        return check_for_column_name
+
+    def from_record(self, record):
+        return pytz.timezone('Europe/Amsterdam').localize(
+            datetime.strptime(self.timestamp, self.format))
+
+    def record_check(self):
+        def fn(record):
+            return True
+
+        return fn
+
+
 timestamp_functions = {
     "from_column": TimestampFromColumn,
     "from_filename": TimestampFromFilename,
+    "fixed": TimestampFixed,
     "now": TimestampNow
 }
 
