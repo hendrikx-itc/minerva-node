@@ -268,6 +268,13 @@ AS $$
 $$ LANGUAGE SQL VOLATILE;
 
 
+CREATE OR REPLACE FUNCTION materialize(materialization.type, "timestamp" timestamp with time zone)
+	RETURNS materialization_result
+AS $$
+	SELECT materialization.materialize($1.src_trendstore_id, $1.dst_trendstore_id, $2);
+$$ LANGUAGE SQL VOLATILE;
+
+
 CREATE OR REPLACE FUNCTION materialize(id integer, "timestamp" timestamp with time zone)
 	RETURNS materialization_result
 AS $$
