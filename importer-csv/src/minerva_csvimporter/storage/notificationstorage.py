@@ -62,7 +62,7 @@ class NotificationStorage(Storage):
                         else:
                             yield ColumnDescriptor(name, datatype_map[notificationstore_type], {})
 
-                datatypes = list(merge_datatypes())
+                column_descriptors = list(merge_datatypes())
             else:
                 deduced_datatype_names = deduce_data_types(
                     map(operator.itemgetter(2), rows)
@@ -77,11 +77,11 @@ class NotificationStorage(Storage):
                         else:
                             yield ColumnDescriptor(column_name, datatype_map[datatype_name], {})
 
-                datatypes = list(merge_datatypes())
+                column_descriptors = list(merge_datatypes())
 
                 attributes = [
-                    Attribute(name, datatype.name, '')
-                    for name, datatype in zip(column_names, datatypes)
+                    Attribute(name, column_descriptor.data_type, '')
+                    for name, column_descriptor in zip(column_names, column_descriptors)
                 ]
 
                 notificationstore = NotificationStore(
@@ -90,7 +90,7 @@ class NotificationStorage(Storage):
 
                 self.conn.commit()
 
-            parsers = [datatype.string_parser() for datatype in datatypes]
+            parsers = [column_descriptor.string_parser() for column_descriptor in column_descriptors]
 
             for dn, timestamp, values in rows:
                 record = Record(
