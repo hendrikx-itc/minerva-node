@@ -54,7 +54,7 @@ class HarvestPlugin(object):
                 },
                 "parser_config": {},
                 "uri": "/data/new/some_file.xml",
-                "datasource": "pm_system_1"
+                "datasource": "pm-system-1"
             }
         """
         return HarvestJob(self.plugins, self.existence, self.minerva_context, id, description)
