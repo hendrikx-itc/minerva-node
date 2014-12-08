@@ -21,6 +21,10 @@ setup(
     author=__author__,
     author_email="a.j.n.blokland@hendrikx-itc.nl",
     url = "http://hendrikx-itc.nl",
+    install_requires=[
+        "minerva>=4.6",
+        "minerva-harvesting"
+    ],
     packages=["harvest"],
     package_dir={"": "src"},
     entry_points= {"node.plugins": ["harvest = harvest:HarvestPlugin"]}
