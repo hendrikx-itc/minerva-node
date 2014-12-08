@@ -126,7 +126,7 @@ class HarvestJob(object):
         else:
             execute_action(uri, self.description.get("on_success", DEFAULT_ACTION))
 
-        self.existence.flush()
+        self.existence.flush(datetime.now())
 
 
 def execute_action(uri, action):
