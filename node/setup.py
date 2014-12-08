@@ -13,7 +13,7 @@ this software.
 from setuptools import setup
 
 setup(
-    name="node",
+    name="minerva-node",
     version="4.4.0",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",

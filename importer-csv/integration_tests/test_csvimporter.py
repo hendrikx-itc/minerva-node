@@ -13,6 +13,7 @@ this software.
 import StringIO
 
 from minerva_csvimporter import import_csv
+from minerva_csvimporter.profile import Profile
 
 from minerva_db import connect
 
@@ -25,25 +26,88 @@ def test_timestamp_source_data():
         '10023;0.9919;17;20111111_0000\n'
         '10047;0.9963;18;20101010_0000\n')
 
-    profile = {
-        "granularity": 86400,
-        "identifier": "Cell={CIC}",
-        "timestamp_format": "%Y%m%d_%H%M",
-        "timestamp_column": "t_source",
-        "timestamp_from_filename_regex": None,
-        "identifier_regex": "(.*)",
+    profile = Profile({
+        "storage": {
+            "type": "trend",
+            "config": {
+                "granularity": 86400,
+                "datasource": "integration_test",
+                "timestamp_is_start": False
+            }
+        },
+        "identifier": {
+            "template": "Cell={CIC}",
+            "regex": "(.*)"
+        },
+        "timestamp": {
+            "type": "from_column",
+            "config": {
+                "format": "%Y%m%d_%H%M",
+                "name": "t_source",
+                "timezone": "UTC"
+            }
+        },
         "identifier_is_alias": False,
-        "fields": [],
-        "ignore_fields": [],
-        "ignore_field_mismatches": False,
+        "field_selector": {
+            "type": "all"
+        },
         "timestamp_is_start": True,
         "character_encoding": "utf-8",
-        "dialect": "auto",
-        "value_mapping": ""
-    }
+        "dialect": {
+            "type": "auto"
+        },
+        "value_mapping": {}
+    })
 
-    datasource_name = 'csvimporter'
-    timestamp = None
+    import_csv(conn, profile, readfile)
 
-    import_csv(conn, profile, datasource_name, 'trend', timestamp, readfile,
-               'test.csv')
+
+def test_timestamp_as_data():
+    conn = connect()
+
+    readfile = StringIO.StringIO(
+        'ts;CIC;CCR;Drops;created\n'
+        '20140511_1300;10023;0.9919;17;20111111_0000\n'
+        '20140511_1300;10047;0.9963;18;20101010_0000\n')
+
+    profile = Profile({
+        "storage": {
+            "type": "trend",
+            "config": {
+                "granularity": 86400,
+                "datasource": "integration_test",
+                "timestamp_is_start": False
+            }
+        },
+        "identifier": {
+            "template": "Cell={CIC}",
+            "regex": "(.*)"
+        },
+        "timestamp": {
+            "type": "from_column",
+            "config": {
+                "format": "%Y%m%d_%H%M",
+                "name": "ts",
+                "timezone": "UTC"
+            }
+        },
+        "identifier_is_alias": False,
+        "field_selector": {
+            "type": "all"
+        },
+        "timestamp_is_start": True,
+        "character_encoding": "utf-8",
+        "dialect": {
+            "type": "auto"
+        },
+        "value_mapping": {
+            "created": {
+                "type": "timestamp",
+                "config": {
+                    "format": "%Y%m%d_%H%M"
+                }
+            }
+        }
+    })
+
+    import_csv(conn, profile, readfile)

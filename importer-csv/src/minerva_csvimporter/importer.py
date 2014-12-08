@@ -1,3 +1,4 @@
+from future_builtins import map, filter
 # -*- coding: utf-8 -*-
 """Provides main csv importing function `import_csv`."""
 __docformat__ = "restructuredtext en"
@@ -11,23 +12,15 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import csv
-from datetime import datetime, timedelta
-import re
-import operator
+from datetime import datetime
 from contextlib import closing
 from functools import partial
-import logging.handlers
 import codecs
 
-import pytz
+from minerva.util import compose
 
-from minerva.util import compose, identity, k, grouped_by
-from minerva.storage import get_plugin
-from minerva.directory.helpers import NoSuitablePluginError
-from minerva.directory.helpers_v4 import name_to_datasource, name_to_entitytype
-from minerva.directory.distinguishedname import explode
-
-from minerva_csvimporter import dialects
+from minerva_csvimporter.util import as_functor
+from minerva_csvimporter.values_extractor import ValuesExtractor
 
 
 class DataError(Exception):
@@ -44,212 +37,107 @@ class ConfigurationError(Exception):
     pass
 
 
-def import_csv(conn, profile, datasource_name, storagetype, timestamp, csvfile,
-               file_name):
-    alias_type = "name"
+def import_csv(conn, profile, csv_file):
+    column_names, rows = load_csv(profile, csv_file)
 
-    granularity = profile["granularity"]
-    identifier = profile["identifier"]
-    timestampformat = profile["timestamp_format"]
-    timestampcolumn = profile["timestamp_column"]
-    identifier_regex = profile["identifier_regex"]
-    identifier_is_alias = profile["identifier_is_alias"]
-    fields = [f for f in profile["fields"] if f]
-    ignore_fields = profile["ignore_fields"]
-    ignore_field_mismatches = profile["ignore_field_mismatches"]
-    timestamp_is_start = profile["timestamp_is_start"]
-    character_encoding = profile["character_encoding"]
-    dialect = profile["dialect"]
-    value_mapping = profile["value_mapping"]
-    timestamp_from_filename_regex = profile["timestamp_from_filename_regex"]
+    profile.storage.connect(conn)
+    profile.storage.store(column_names, profile.fields, rows)
 
-    logging.debug("\n".join([
-        "Importing: {}.".format(csvfile),
-        "Granularity: {}".format(granularity),
-        "Identifier: {}".format(identifier),
-        "Data source: {}".format(datasource_name),
-        "Timestamp: {}".format(timestamp)]))
 
-    if dialect == "auto":
-        dialect = get_dialect(csvfile)
-    elif dialect == "prime":
-        dialect = dialects.Prime()
+def load_csv(profile, csv_file):
+    """
+    Return tuple (column_names, data_rows).
 
-    unicode_reader = codecs.getreader(character_encoding)(csvfile)
+    column_names - a list with selected column names
+    data_rows - an iterator over row tuples (dn, timestamp, values)
+    """
+    csv_reader = create_csv_reader(profile, csv_file)
 
-    utf8recoder = remove_nul(recode_utf8(unicode_reader))
+    header = csv_reader.next()
 
-    csv_reader = csv.reader(utf8recoder, dialect=dialect)
+    fields = profile.field_selector(header)
+    values = ValuesExtractor(fields)
 
-    if not fields:
-        fields = csv_reader.next()
-        unicode_reader.seek(0)
+    check_header(header, fields)
 
-    for ignore_field in ignore_fields:
-        try:
-            del(fields)[fields.index(ignore_field)]
-        except ValueError:
-            continue
+    header_checks = [
+        check for check in
+        [
+            profile.timestamp.header_check(),
+            profile.identifier.header_check()
+        ]
+        if not check is None
+    ]
 
-    entitytype_name = explode(identifier)[-1][0]
+    for check in header_checks:
+        check(header)
 
-    with closing(conn.cursor()) as cursor:
-        datasource = name_to_datasource(cursor, datasource_name)
-        entitytype = name_to_entitytype(cursor, entitytype_name)
-
-    conn.commit()
-
-    if identifier_is_alias:
-        alias_type_id = get_alias_type_id(conn, alias_type)
-        identifier_to_dn = partial(
-            get_dn_by_entitytype_and_alias, conn, entitytype.id, alias_type_id)
-    else:
-        # Assumed that identifier is distinguished name
-        identifier_to_dn = identity
-
-    parse_ts = partial(parse_timestamp, datasource.tzinfo, timestampformat)
-
-    if timestamp_is_start:
-        offset = timedelta(0, granularity)
-
-        parse_ts = compose(partial(offset_timestamp, offset), parse_ts)
-
-    record_checks = []
-
-    identifier_fields = re.findall(r"{(\w+)}", identifier)
-
-    #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
-    is_identifier_available = compose(
-        operator.not_, partial(any_field_empty, identifier_fields))
-
-    record_checks.append(is_identifier_available)
-
-    if timestampcolumn and timestamp:
-        # Use timestamp found in timestamp column, when empty use 'timestamp'
-        get_timestamp_value = partial(get_value_by_key, timestampcolumn,
-                                      default=timestamp)
-
-    elif timestampcolumn:
-        get_timestamp_value = partial(get_value_by_key, timestampcolumn)
-        is_timestamp_field_not_empty = compose(
-            operator.not_, partial(is_field_empty, timestampcolumn))
-        record_checks.append(is_timestamp_field_not_empty)
-    elif timestamp:
-        get_timestamp_value = k(timestamp)
-    elif timestamp_from_filename_regex:
-        m = re.match(timestamp_from_filename_regex, file_name)
-
-        if m:
-            get_timestamp_value = k(m.group(1))
-        else:
-            raise ConfigurationError(
-                "Could not match timestamp pattern '{}' "
-                "in filename '{}'".format(
-                    timestamp_from_filename_regex, file_name))
-    else:
-        raise ConfigurationError(
-            "No timestamp or column with timestamp found: "
-            "please specify timestamp or timestampcolumn")
+    record_checks = [
+        check for check in
+        [
+            profile.timestamp.record_check(),
+            profile.identifier.record_check()
+        ]
+        if not check is None
+    ]
 
     include_record = partial(record_passes_checks, record_checks)
 
-    def include_row(line_nr, column_names, row):
-        field_count = len(column_names)
+    include_row = create_row_check(header)
+
+    records = filter(
+        include_record,
+        (
+            dict(zip(header, [item.decode('utf-8') for item in row]))
+            for line_nr, row in enumerate(csv_reader)
+            if include_row(line_nr, row)
+        )
+    )
+
+    extract_raw_data_row = compose(tuple, raw_data_row_extractor(
+        profile.identifier.from_record,
+        profile.timestamp.from_record,
+        values.from_record
+    ))
+
+    return fields, map(extract_raw_data_row, records)
+
+
+def create_csv_reader(profile, csv_file):
+    dialect = profile.dialect(csv_file)
+
+    unicode_reader = codecs.getreader(profile.character_encoding)(csv_file)
+
+    # Recoding to UTF-8 and NULL byte filtering are required for the standard
+    # csv.reader: https://docs.python.org/2/library/csv.html
+    utf8recoder = remove_nul(recode_utf8(unicode_reader))
+
+    return csv.reader(utf8recoder, dialect=dialect)
+
+
+def raw_data_row_extractor(*args):
+    def fn(record):
+        return list(map(as_functor(record), args))
+
+    return fn
+
+
+def create_row_check(expected_columns):
+    field_count = len(expected_columns)
+
+    def include_row(line_nr, row):
         value_count = len(row)
 
-        include = True
-
         if value_count != field_count:
-            msg = "Field mismatch in line {0} ({1} vs {2}): {3}".format(
-                line_nr, field_count, value_count, row)
+            msg = (
+                "Field mismatch in line {0} (expected {1} vs found {2}): {3}"
+            ).format(line_nr, field_count, value_count, row)
 
-            if ignore_field_mismatches:
-                logging.info(msg)
-                include = False
-            else:
-                raise DataError(msg)
+            raise DataError(msg)
 
-        return include
+        return True
 
-    extract_ident = partial(extract_identifier, identifier_regex)
-
-    if identifier_fields:
-        #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
-        get_identifier = compose(
-            extract_ident,
-            partial(get_value_by_identifier_format, identifier))
-    else:
-        get_identifier = compose(
-            extract_ident,
-            partial(get_value_by_key, identifier))
-
-    get_dn_from_record = compose(identifier_to_dn, get_identifier)
-
-    if value_mapping:
-        extract_values = mapping_values_extractor(fields, value_mapping)
-    else:
-        extract_values = plain_values_extractor(fields)
-
-    get_timestamp = compose(parse_ts, get_timestamp_value)
-
-    extract_raw_data_row = raw_data_row_extractor(
-        get_dn_from_record, get_timestamp, extract_values)
-
-    records = [record
-               for record in read_records(csv_reader, fields, include_row)
-               if include_record(record)]
-
-    raw_data_rows = map(extract_raw_data_row, records)
-
-    plugin = init_plugin(conn, storagetype)
-
-    if storagetype == "attribute":
-        raw_datapackage = plugin.RawDataPackage(fields, raw_data_rows)
-
-        plugin.store_raw(datasource, raw_datapackage)
-
-    elif storagetype == "trend":
-        granularity = plugin.create_granularity(granularity)
-
-        for timestamp, grouped_rows in grouped_by(raw_data_rows, operator.itemgetter(1)):
-            rows = [
-                (dn, values)
-                for dn, _, values in grouped_rows
-            ]
-
-            utc_timestamp = timestamp.astimezone(pytz.utc)
-            utc_timestamp_str = utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S")
-
-            raw_datapackage = plugin.RawDataPackage(
-                granularity, utc_timestamp_str, fields, rows)
-
-            plugin.store_raw(datasource, raw_datapackage)
-    else:
-        raise Exception("Unsupported storage class: {}".format(storagetype))
-
-
-def raw_data_row_extractor(extract_dn, extract_timestamp, extract_values):
-    def fn(record):
-        return extract_dn(record), extract_timestamp(record), extract_values(record)
-
-    return fn
-
-
-def mapping_values_extractor(fields, value_mapping):
-    def fn(record):
-        return [
-            value_mapping.get(field, {}).get(record[field], record[field])
-            for field in fields
-        ]
-
-    return fn
-
-
-def plain_values_extractor(fields):
-    def fn(record):
-        return [record[field] for field in fields]
-
-    return fn
+    return include_row
 
 
 def record_passes_checks(checks, record):
@@ -262,74 +150,12 @@ def is_field_empty(field_name, record):
     return record[field_name] == ""
 
 
-def any_field_empty(field_names, record):
-    """Return True if value of one of `field_names` in `record` equals ''."""
-    return any(record[field_name] == "" for field_name in field_names)
-
-
-def get_value_by_key(key, record, default=None):
-    """
-    Return value with key `key` from `record` or otherwise `default`.
-
-    This has the same function as dict.get, but with different argument order
-    to support partial application.
-
-    """
-    v = record[key]
-    if v:
-        return v
-    else:
-        return default
-
-
-def get_value_by_identifier_format(identifier_format, record):
-    return identifier_format.format(**record)
-
-
-def get_value_by_index(index, iterable):
-    return iterable[index]
-
-
-def init_plugin(conn, storagetype):
-    plugin = get_plugin(storagetype)(conn, api_version=4)
-
-    if not plugin:
-        raise NoSuitablePluginError(
-            "Missing storage plugin {}".format(storagetype))
-
-    return plugin
-
-
-def offset_timestamp(offset, timestamp):
-    ts_with_offset = (timestamp.astimezone(pytz.utc) + offset).astimezone(
-        timestamp.tzinfo)
-    #Deal with DST
-    utc_offset_delta = timestamp.utcoffset() - ts_with_offset.utcoffset()
-
-    return ts_with_offset + utc_offset_delta
-
-
 def parse_timestamp(tzinfo, timestamp_format, timestamp_string):
     return tzinfo.localize(
         datetime.strptime(timestamp_string, timestamp_format))
 
 
-def extract_identifier(pattern, value):
-    regex = re.compile(pattern)
-
-    m = regex.match(value)
-
-    return "".join(m.groups())
-
-
-def get_dialect(csv_file):
-    sample = csv_file.read(128000)
-    csv_file.seek(0)
-
-    return csv.Sniffer().sniff(sample)
-
-
-def check_header(header):
+def check_header(header, required_fields):
     """
     Return None if header is OK, otherwise raise exception.
     """
@@ -342,6 +168,14 @@ def check_header(header):
     if duplicates:
         raise DataError("Ambiguous field(s) found in header: {}.".format(
             ", ".join(duplicates)))
+
+    missing_fields = [
+        field for field in required_fields if not field in header
+    ]
+
+    if missing_fields:
+        raise DataError(
+            "Field(s) {} not found in header".format(missing_fields))
 
 
 def get_duplicates(strings):
@@ -360,24 +194,6 @@ def get_duplicates(strings):
             duplicates.append(string)
 
     return duplicates
-
-
-def read_records(csv_reader, fields, include_row):
-    column_names = csv_reader.next()
-
-    check_header(column_names)
-
-    missing_fields = [field for field in fields if not field in column_names]
-
-    if missing_fields:
-        raise DataError(
-            "Field(s) {} not found in header".format(missing_fields))
-
-    for line_nr, row in enumerate(csv_reader):
-        if include_row(line_nr, column_names, row):
-            yield dict(
-                zip(column_names, (item.decode('utf-8') for item in row))
-            )
 
 
 def get_alias_type_id(conn, alias_type_name):

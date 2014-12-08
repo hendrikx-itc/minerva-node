@@ -23,13 +23,14 @@ def test_is_field_empty():
 def test_check_header_exc():
     header1 = ["first", "", ""]
 
-    check_header(header1)
+    check_header(header1, ["first"])
 
 
 def test_check_header_no_exc():
     header1 = ["first", "second", "third"]
 
-    check_header(header1)
+    check_header(header1, ["first", "third"])
+
 
 def test_remove_nul():
     lines = [
