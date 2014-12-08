@@ -54,7 +54,7 @@ class HarvestPlugin(object):
                 },
                 "parser_config": {},
                 "uri": "/data/new/some_file.xml",
-                "datasource": "pm_system_1"
+                "datasource": "pm-system-1"
             }
         """
         return HarvestJob(self.plugins, self.existence, self.minerva_context, id, description)
@@ -126,7 +126,7 @@ class HarvestJob(object):
         else:
             execute_action(uri, self.description.get("on_success", DEFAULT_ACTION))
 
-        self.existence.flush()
+        self.existence.flush(datetime.now())
 
 
 def execute_action(uri, action):
@@ -153,9 +153,15 @@ def move(path, to):
         logging.warn(str(exc))
 
 
+def do_nothing(path):
+    pass
+
+
 done_actions = {
     "remove": remove,
-    "move": move}
+    "move": move,
+    "do_nothing": do_nothing
+}
 
 
 def dispatch_raw_and_mark_existing(store_raw, filter_types, mark_existing, raw_datapackage):
