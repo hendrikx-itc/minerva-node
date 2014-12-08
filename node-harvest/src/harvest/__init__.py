@@ -153,9 +153,15 @@ def move(path, to):
         logging.warn(str(exc))
 
 
+def do_nothing(path):
+    pass
+
+
 done_actions = {
     "remove": remove,
-    "move": move}
+    "move": move,
+    "do_nothing": do_nothing
+}
 
 
 def dispatch_raw_and_mark_existing(store_raw, filter_types, mark_existing, raw_datapackage):
