@@ -80,7 +80,7 @@ class NotificationStorage(Storage):
                 column_descriptors = list(merge_datatypes())
 
                 attributes = [
-                    Attribute(name, column_descriptor.data_type, '')
+                    Attribute(name, column_descriptor.data_type.name, '')
                     for name, column_descriptor in zip(column_names, column_descriptors)
                 ]
 
