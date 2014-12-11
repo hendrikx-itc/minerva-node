@@ -14,6 +14,8 @@ from datetime import datetime
 
 import pytz
 
+from minerva.util import k
+
 from minerva_csvimporter.importer import ConfigurationError
 from minerva_csvimporter.data_extractor import DataExtractor
 
@@ -116,10 +118,7 @@ class TimestampFixed(object):
             datetime.strptime(self.timestamp, self.format))
 
     def record_check(self):
-        def fn(record):
-            return True
-
-        return fn
+        return k(True)
 
 
 timestamp_functions = {
