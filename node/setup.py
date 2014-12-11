@@ -15,10 +15,10 @@ from setuptools import setup
 setup(
 <<<<<<< HEAD
     name="node",
-    version="4.5.13",
+    version="4.5.15",
 =======
     name="minerva-node",
-    version="4.5.13",
+    version="4.5.15",
 >>>>>>> develop
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",

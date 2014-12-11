@@ -16,20 +16,15 @@ __author__ = "Hendrikx ITC"
 
 setup(
     name="harvest",
-    version="4.5.13",
+    version="4.5.15",
     description=__doc__,
     author=__author__,
     author_email="a.j.n.blokland@hendrikx-itc.nl",
-<<<<<<< HEAD
-    url = "http://hendrikx-itc.nl",
-    install_requires=["minerva>=4.5.3"],
-=======
     url="http://hendrikx-itc.nl",
     install_requires=[
         "minerva>=4.6",
         "minerva-harvesting"
     ],
->>>>>>> develop
     packages=["harvest"],
     package_dir={"": "src"},
     entry_points={"node.plugins": ["harvest = harvest:HarvestPlugin"]}
