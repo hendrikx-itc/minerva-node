@@ -266,8 +266,12 @@ def update_profile_from_args(profile, args):
         p_copy["timestamp"]["type"] = "from_column"
         p_copy["timestamp"]["config"]["name"] = args.timestamp_column
     elif args.timestamp:
-        p_copy["timestamp"]["type"] = "fixed"
-        p_copy["timestamp"]["config"] = {"timestamp": args.timestamp, "format": "%Y%m%d_%H%M"}
+        if args.timestamp.lower() == "now":
+            p_copy["timestamp"]["type"] = "now"
+            p_copy["timestamp"]["config"] = {}
+        else:
+            p_copy["timestamp"]["type"] = "fixed"
+            p_copy["timestamp"]["config"] = {"timestamp": args.timestamp, "format": "%Y%m%d_%H%M"}
 
     if args.timestamp_format:
         p_copy["timestamp"]["config"]["format"] = args.timestamp_format
