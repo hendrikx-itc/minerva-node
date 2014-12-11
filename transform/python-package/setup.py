@@ -14,7 +14,7 @@ from setuptools import setup
 
 setup(
     name="transforming",
-    version="4.5.13",
+    version="4.5.14",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=4.5.3"],
