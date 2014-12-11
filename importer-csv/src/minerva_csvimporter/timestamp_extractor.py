@@ -84,6 +84,15 @@ class TimestampNow(object):
     def set_filename(self, filename):
         pass
 
+    def header_check(self):
+        def check_nothing(header):
+            pass
+
+        return check_nothing
+
+    def record_check(self):
+        return k(True)
+
     def from_record(self, record):
         return self.timestamp
 
