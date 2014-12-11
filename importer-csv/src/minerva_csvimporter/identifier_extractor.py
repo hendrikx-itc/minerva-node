@@ -29,17 +29,10 @@ class IdentifierExtractor(DataExtractor):
         self.template = template
         self.regex = regex
 
-        placeholders = re.findall(r"{(\w+)}", template)
+        self.fields = re.findall(r"{(\w+)}", template)
 
-        if placeholders:
-            self.fields = placeholders
-
-            #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
-            get_identifier = expand_kwargs(template.format)
-        else:
-            self.fields = [template]
-
-            get_identifier = operator.itemgetter(template)
+        #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
+        get_identifier = expand_kwargs(template.format)
 
         extract_ident = partial(extract_identifier, regex)
 

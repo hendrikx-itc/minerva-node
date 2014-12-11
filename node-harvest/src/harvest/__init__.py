@@ -174,7 +174,7 @@ def dispatch_raw_and_mark_existing(store_raw, filter_types, mark_existing, raw_d
     dns = [dn for dn, _timestamp, _values in raw_datapackage.rows if entitytype_from_dn(dn) in
             filter_types]
 
-    mark_existing(dns, datetime.now())
+    mark_existing(dns)
 
     store_raw(raw_datapackage)
 
