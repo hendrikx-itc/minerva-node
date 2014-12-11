@@ -39,13 +39,11 @@ def main():
 
     minerva_instance = MinervaInstance.load(args.instance)
 
-    config = get_config(args)
-
     if not args.quiet:
         logging.root.addHandler(logging.StreamHandler())
         logging.root.setLevel(args.log_level)
 
-    profile_conf = get_profile(config["profile_directory"], args.profile)
+    profile_conf = get_profile(args.profile_directory, args.profile)
 
     profile_conf = update_profile_from_args(profile_conf, args)
 
@@ -56,8 +54,7 @@ def main():
     else:
         file_name = None
 
-    config_user = config.get("database", {}).get("user")
-    user = config_user or args.user or "minerva_admin"
+    user = args.user or "minerva_admin"
 
     with closing(minerva_instance.connect(user=user)) as conn:
         if args.infile is sys.stdin:
@@ -95,6 +92,8 @@ def create_argument_parser():
         "-i", "--instance", default=default_minerva_instance,
         help="name of the target minerva instance")
 
+    parser.add_argument("-u", "--user", help="user to connect to database")
+
     parser.add_argument("--datasource", help="name of datasource")
 
     parser.add_argument(
@@ -115,6 +114,10 @@ def create_argument_parser():
     parser.add_argument(
         "--generate-profile-file", action=GenerateProfileFileAction, nargs=0,
         help="generate default profile file")
+
+    parser.add_argument(
+        "--profile-directory", default="/etc/minerva/csv-importer/profiles",
+        help="location of profiles")
 
     parser.add_argument(
         "-p", "--profile", default="default", help="Name of profile")
@@ -214,16 +217,6 @@ class GenerateProfileFileAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         sys.stdout.write(default_profile_str())
         sys.exit(0)
-
-
-def get_config(args):
-    config = ConfigObj(StringIO(default_config_str()))
-
-    if os.path.isfile(args.configfile):
-        custom_config = ConfigObj(args.configfile)
-        config.merge(custom_config)
-
-    return config
 
 
 def update_profile_from_args(profile, args):
