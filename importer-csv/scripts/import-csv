@@ -247,6 +247,12 @@ def update_profile_from_args(profile, args):
     if args.storage_type:
         p_copy["storage"]["type"] = args.storage_type
 
+        # Except for the datasource, the configuration for different storage
+        # types is completely different.
+        p_copy["storage"]["config"] = {
+            "datasource": p_copy["storage"]["config"]["datasource"]
+        }
+
     if args.timestamp_is_start:
         if p_copy["storage"]["type"] != "trend":
             raise ConfigurationError(
