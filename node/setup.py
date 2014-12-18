@@ -13,13 +13,8 @@ this software.
 from setuptools import setup
 
 setup(
-<<<<<<< HEAD
-    name="node",
-    version="4.5.16",
-=======
     name="minerva-node",
-    version="4.5.16",
->>>>>>> develop
+    version="4.5.17",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=4.5.3"],
