@@ -16,7 +16,7 @@ __author__ = "Hendrikx ITC"
 
 setup(
     name="harvest",
-    version="4.5.17",
+    version="4.5.18",
     description=__doc__,
     author=__author__,
     author_email="a.j.n.blokland@hendrikx-itc.nl",

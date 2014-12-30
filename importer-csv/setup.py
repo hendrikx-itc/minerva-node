@@ -14,7 +14,7 @@ from setuptools import setup
 
 setup(
     name="CSVImporter",
-    version="4.5.17",
+    version="4.5.18",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=4.5.3", "configobj"],
