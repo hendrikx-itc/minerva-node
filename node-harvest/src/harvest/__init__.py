@@ -15,6 +15,7 @@ from datetime import datetime
 from functools import partial
 import codecs
 import traceback
+import gzip
 
 from minerva.util import compose
 from minerva.directory.helpers import get_datasource, NoSuchDataSourceError
@@ -193,10 +194,13 @@ def open_uri(uri, encoding):
     """
     Return a file object for the specified URI.
     """
-    if encoding == "binary":
-        open_action = partial(open, uri, "rb")
+    if uri.endswith(".gz"):
+        open_action = partial(gzip.open, uri)
     else:
-        open_action = partial(codecs.open, uri, encoding=encoding)
+        if encoding == "binary":
+            open_action = partial(open, uri, "rb")
+        else:
+            open_action = partial(codecs.open, uri, encoding=encoding)
 
     try:
         return open_action()
