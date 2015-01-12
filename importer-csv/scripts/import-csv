@@ -97,7 +97,7 @@ def create_argument_parser():
     parser.add_argument("--datasource", help="name of datasource")
 
     parser.add_argument(
-        "infile", nargs='?', type=argparse.FileType('rb'),
+        "infile", type=argparse.FileType('rb'),
         help="Path of file that will be processed", default=sys.stdin)
 
     parser.add_argument(
