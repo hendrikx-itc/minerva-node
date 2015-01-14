@@ -29,7 +29,7 @@ class IdentifierExtractor(DataExtractor):
         self.template = template
         self.regex = regex
 
-        self.fields = re.findall(r"{([\w ]+)}", template)
+        self.fields = re.findall("{([^}]+)}", template)
 
         #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
         get_identifier = expand_kwargs(template.format)
