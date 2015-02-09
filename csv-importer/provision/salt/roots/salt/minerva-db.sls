@@ -40,7 +40,7 @@ minerva:
 
 minerva-working-copy:
   cmd.run:
-    - name: 'git clone https://github.com/hendrikx-itc/minerva /home/vagrant/minerva'
+    - name: 'git clone --branch=release/5.0 https://github.com/hendrikx-itc/minerva /home/vagrant/minerva'
     - require:
       - pkg: git
     - creates: /home/vagrant/minerva
