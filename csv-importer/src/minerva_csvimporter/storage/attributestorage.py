@@ -43,7 +43,8 @@ class AttributeStorage(Storage):
             entitytype = entity_ref.get_entitytype(cursor)
 
             attributestore = AttributeStore.from_attributes(
-                cursor, datasource, entitytype, attributes)
+                cursor, datasource, entitytype, attributes
+            )
 
         self.conn.commit()
 

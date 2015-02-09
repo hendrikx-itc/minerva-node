@@ -31,7 +31,7 @@ class IdentifierExtractor(DataExtractor):
 
         self.fields = re.findall("{([^}]+)}", template)
 
-        #composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
+        # composed identifier (e.g. '{fld1}-{fld2}, {fld1}:{fld2}')
         get_identifier = expand_kwargs(template.format)
 
         extract_ident = partial(extract_identifier, regex)

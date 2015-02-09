@@ -52,7 +52,8 @@ class DataTypeTimestampWithTimeZone(DataType):
     @classmethod
     def string_parser(cls, config):
         """
-        Return function that can parse a string representation of a TimestampWithTimeZone value.
+        Return function that can parse a string representation of a
+        TimestampWithTimeZone value.
 
         :param config: a dictionary with the form {"timezone", <tzinfo>, "format", <format_string>}
         :return: a function (str_value) -> value
@@ -223,7 +224,7 @@ DEFAULT_DATA_TYPE = "smallint"
 
 def deduce_data_types(rows):
     """
-    Return a list of the minimal required datatypes to store the values, in the
+    Return a list of the minimal required data types to store the values, in the
     same order as the values and thus matching the order of attribute_names.
     """
     row_length = len(rows[0])

@@ -28,8 +28,9 @@ def as_functor(x):
 
 def offset_timestamp(offset, timestamp):
     ts_with_offset = (timestamp.astimezone(pytz.utc) + offset).astimezone(
-        timestamp.tzinfo)
-    #Deal with DST
+        timestamp.tzinfo
+    )
+    # Deal with DST
     utc_offset_delta = timestamp.utcoffset() - ts_with_offset.utcoffset()
 
     return ts_with_offset + utc_offset_delta

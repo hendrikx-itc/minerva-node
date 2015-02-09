@@ -1,7 +1,7 @@
 from nose.tools import assert_true, assert_false, raises, eq_
 
-from minerva_csvimporter.importer import is_field_empty, check_header, DataError, \
-    remove_nul
+from minerva_csvimporter.importer import is_field_empty, check_header, \
+    DataError, remove_nul
 
 
 def test_is_field_empty():

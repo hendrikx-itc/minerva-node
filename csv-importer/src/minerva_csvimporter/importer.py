@@ -66,7 +66,7 @@ def load_csv(profile, csv_file):
             profile.timestamp.header_check(),
             profile.identifier.header_check()
         ]
-        if not check is None
+        if check is not None
     ]
 
     for check in header_checks:
@@ -78,7 +78,7 @@ def load_csv(profile, csv_file):
             profile.timestamp.record_check(),
             profile.identifier.record_check()
         ]
-        if not check is None
+        if check is not None
     ]
 
     include_record = partial(record_passes_checks, record_checks)
@@ -152,7 +152,8 @@ def is_field_empty(field_name, record):
 
 def parse_timestamp(tzinfo, timestamp_format, timestamp_string):
     return tzinfo.localize(
-        datetime.strptime(timestamp_string, timestamp_format))
+        datetime.strptime(timestamp_string, timestamp_format)
+    )
 
 
 def check_header(header, required_fields):
@@ -161,13 +162,17 @@ def check_header(header, required_fields):
     """
     if any(len(field) == 0 for field in header):
         raise DataError(
-            "Empty field name in header: {}".format(",".join(header)))
+            "Empty field name in header: {}".format(",".join(header))
+        )
 
     duplicates = get_duplicates(header)
 
     if duplicates:
-        raise DataError("Ambiguous field(s) found in header: {}.".format(
-            ", ".join(duplicates)))
+        raise DataError(
+            "Ambiguous field(s) found in header: {}.".format(
+                ", ".join(duplicates)
+            )
+        )
 
     missing_fields = [
         field for field in required_fields if not field in header
@@ -188,7 +193,7 @@ def get_duplicates(strings):
     for string in strings:
         lower_string = string.lower()
 
-        if not lower_string in unique:
+        if lower_string not in unique:
             unique.add(lower_string)
         else:
             duplicates.append(string)
@@ -210,7 +215,8 @@ def get_dn_by_entitytype_and_alias(conn, entitytype_id, alias_type_id, alias):
     query = (
         "SELECT dn FROM directory.entity e "
         "JOIN directory.alias a ON e.id = a.entity_id "
-        "WHERE a.name = %s AND e.entitytype_id = %s AND a.type_id = %s")
+        "WHERE a.name = %s AND e.entitytype_id = %s AND a.type_id = %s"
+    )
 
     with closing(conn.cursor()) as cursor:
         cursor.execute(query, (alias, entitytype_id, alias_type_id))

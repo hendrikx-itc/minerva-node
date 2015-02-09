@@ -54,13 +54,22 @@ class NotificationStorage(Storage):
 
                         if configured_descriptor:
                             if configured_descriptor.data_type.name != notificationstore_type:
-                                raise Exception("Attribute({} {}) type of notificationstore does not match configured"
-                                                " type: {}".format(name, notificationstore_type,
-                                                                   configured_descriptor.data_type.name))
+                                raise Exception(
+                                    "Attribute({} {}) type of "
+                                    "notificationstore does not match "
+                                    "configured type: {}".format(
+                                        name, notificationstore_type,
+                                        configured_descriptor.data_type.name
+                                    )
+                                )
 
                             yield configured_descriptor
                         else:
-                            yield ColumnDescriptor(name, datatype_map[notificationstore_type], {})
+                            yield ColumnDescriptor(
+                                name,
+                                datatype_map[notificationstore_type],
+                                {}
+                            )
 
                 column_descriptors = list(merge_datatypes())
             else:
@@ -75,7 +84,11 @@ class NotificationStorage(Storage):
                         if configured_descriptor:
                             yield configured_descriptor
                         else:
-                            yield ColumnDescriptor(column_name, datatype_map[datatype_name], {})
+                            yield ColumnDescriptor(
+                                column_name,
+                                datatype_map[datatype_name],
+                                {}
+                            )
 
                 column_descriptors = list(merge_datatypes())
 
@@ -90,7 +103,10 @@ class NotificationStorage(Storage):
 
                 self.conn.commit()
 
-            parsers = [column_descriptor.string_parser() for column_descriptor in column_descriptors]
+            parsers = [
+                column_descriptor.string_parser()
+                for column_descriptor in column_descriptors
+            ]
 
             for dn, timestamp, values in rows:
                 record = Record(

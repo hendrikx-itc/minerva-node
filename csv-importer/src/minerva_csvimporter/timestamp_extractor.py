@@ -43,9 +43,11 @@ class TimestampFromColumn(TimestampExtractor):
 
     def header_check(self):
         def check_for_column_name(header):
-            if not self.column_name in header:
+            if self.column_name not in header:
                 raise Exception(
-                    "timestamp column '{}' not in header".format(self.column_name)
+                    "timestamp column '{}' not in header".format(
+                        self.column_name
+                    )
                 )
 
         return check_for_column_name
@@ -70,8 +72,11 @@ class TimestampFromFilename(object):
             )
         else:
             raise ConfigurationError(
-                "Could not match timestamp pattern '{}' in filename '{}'".format(
-                    self.pattern, filename))
+                "Could not match timestamp pattern '{}' in "
+                "filename '{}'".format(
+                    self.pattern, filename
+                )
+            )
 
         self.timestamp = self.tzinfo.localize(naive_timestamp)
 

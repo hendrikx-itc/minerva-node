@@ -35,7 +35,9 @@ class TrendStorage(Storage):
         self.conn = None
 
         if self.timestamp_is_start:
-            self.offset = partial(offset_timestamp, timedelta(0, self.granularity))
+            self.offset = partial(
+                offset_timestamp, timedelta(0, self.granularity)
+            )
         else:
             self.offset = identity
 
@@ -68,13 +70,17 @@ class TrendStorage(Storage):
                 if not trendstore:
                     partition_size = 86400
 
-                    trendstore = TrendStore(datasource, entitytype,
-                            self.granularity, partition_size, "table").create(cursor)
+                    trendstore = TrendStore(
+                        datasource, entitytype, self.granularity,
+                        partition_size, "table"
+                    ).create(cursor)
 
                 self.conn.commit()
 
             utc_timestamp = timestamp.astimezone(pytz.utc)
-            utc_timestamp_str = self.offset(utc_timestamp).strftime("%Y-%m-%dT%H:%M:%S")
+            utc_timestamp_str = self.offset(utc_timestamp).strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            )
 
             raw_datapackage = RawDataPackage(
                 self.granularity, utc_timestamp_str, column_names, rows)
