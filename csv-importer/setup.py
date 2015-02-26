@@ -22,4 +22,5 @@ setup(
     packages=["minerva_csvimporter", "minerva_csvimporter/storage"],
     package_dir={"": "src"},
     package_data={"minerva_csvimporter": ["defaults/*"]},
-    scripts=["scripts/import-csv"])
+    scripts=["scripts/import-csv"]
+)

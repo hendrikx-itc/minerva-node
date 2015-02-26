@@ -11,10 +11,10 @@ this software.
 """
 from contextlib import closing
 
-from minerva.directory.basetypes import DataSource
-from minerva.storage.attribute.rawdatapackage import RawDataPackage
+from minerva.directory import DataSource
+from minerva.storage.attribute.datapackage import DataPackage
 from minerva.storage.attribute.attributestore import AttributeStore
-from minerva.storage.notification.entityref import EntityDnRef
+from minerva.directory.entityref import EntityDnRef
 
 from minerva_csvimporter.storage import Storage
 
@@ -32,7 +32,7 @@ class AttributeStorage(Storage):
 
     def store(self, column_names, fields, raw_data_rows):
         rows = list(raw_data_rows)
-        raw_datapackage = RawDataPackage(column_names, rows)
+        raw_datapackage = DataPackage(column_names, rows)
         attributes = raw_datapackage.deduce_attributes()
 
         entity_ref = EntityDnRef(rows[0][0])

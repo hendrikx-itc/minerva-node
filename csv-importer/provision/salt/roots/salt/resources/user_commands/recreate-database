@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+
+drop-database
+create-database

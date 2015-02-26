@@ -14,7 +14,7 @@ from datetime import datetime
 from nose.tools import eq_
 import pytz
 
-from minerva_csvimporter.datatype import DataTypeTimestampWithTimeZone, \
+from minerva.storage.datatype import DataTypeTimestampWithTimeZone, \
     DataTypeTimestamp, DataTypeSmallInt, DataTypeInteger, load_data_format
 
 

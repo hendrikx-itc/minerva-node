@@ -3,4 +3,5 @@ python-nose:
 
 csv-importer:
   pip.installed:
+    - bin_env: /usr/bin/pip3
     - editable: /vagrant/

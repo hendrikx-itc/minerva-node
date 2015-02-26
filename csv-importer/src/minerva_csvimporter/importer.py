@@ -1,4 +1,3 @@
-from future_builtins import map, filter
 # -*- coding: utf-8 -*-
 """Provides main csv importing function `import_csv`."""
 __docformat__ = "restructuredtext en"
@@ -12,10 +11,7 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import csv
-from datetime import datetime
-from contextlib import closing
 from functools import partial
-import codecs
 
 from minerva.util import compose
 
@@ -40,8 +36,7 @@ class ConfigurationError(Exception):
 def import_csv(conn, profile, csv_file):
     column_names, rows = load_csv(profile, csv_file)
 
-    profile.storage.connect(conn)
-    profile.storage.store(column_names, profile.fields, rows)
+    profile.storage.store(column_names, profile.fields, rows)(conn)
 
 
 def load_csv(profile, csv_file):
@@ -51,9 +46,9 @@ def load_csv(profile, csv_file):
     column_names - a list with selected column names
     data_rows - an iterator over row tuples (dn, timestamp, values)
     """
-    csv_reader = create_csv_reader(profile, csv_file)
+    csv_reader = csv.reader(csv_file, dialect=profile.dialect(csv_file))
 
-    header = csv_reader.next()
+    header = next(csv_reader)
 
     fields = profile.field_selector(header)
     values = ValuesExtractor(fields)
@@ -88,7 +83,7 @@ def load_csv(profile, csv_file):
     records = filter(
         include_record,
         (
-            dict(zip(header, [item.decode('utf-8') for item in row]))
+            dict(zip(header, [item for item in row]))
             for line_nr, row in enumerate(csv_reader)
             if include_row(line_nr, row)
         )
@@ -101,18 +96,6 @@ def load_csv(profile, csv_file):
     ))
 
     return fields, map(extract_raw_data_row, records)
-
-
-def create_csv_reader(profile, csv_file):
-    dialect = profile.dialect(csv_file)
-
-    unicode_reader = codecs.getreader(profile.character_encoding)(csv_file)
-
-    # Recoding to UTF-8 and NULL byte filtering are required for the standard
-    # csv.reader: https://docs.python.org/2/library/csv.html
-    utf8recoder = remove_nul(recode_utf8(unicode_reader))
-
-    return csv.reader(utf8recoder, dialect=dialect)
 
 
 def raw_data_row_extractor(*args):
@@ -150,12 +133,6 @@ def is_field_empty(field_name, record):
     return record[field_name] == ""
 
 
-def parse_timestamp(tzinfo, timestamp_format, timestamp_string):
-    return tzinfo.localize(
-        datetime.strptime(timestamp_string, timestamp_format)
-    )
-
-
 def check_header(header, required_fields):
     """
     Return None if header is OK, otherwise raise exception.
@@ -175,7 +152,7 @@ def check_header(header, required_fields):
         )
 
     missing_fields = [
-        field for field in required_fields if not field in header
+        field for field in required_fields if field not in header
     ]
 
     if missing_fields:
@@ -199,43 +176,3 @@ def get_duplicates(strings):
             duplicates.append(string)
 
     return duplicates
-
-
-def get_alias_type_id(conn, alias_type_name):
-    query = "SELECT id FROM directory.aliastype WHERE name = %s"
-
-    with closing(conn.cursor()) as cursor:
-        cursor.execute(query, (alias_type_name,))
-        type_id, = cursor.fetchone()
-
-    return type_id
-
-
-def get_dn_by_entitytype_and_alias(conn, entitytype_id, alias_type_id, alias):
-    query = (
-        "SELECT dn FROM directory.entity e "
-        "JOIN directory.alias a ON e.id = a.entity_id "
-        "WHERE a.name = %s AND e.entitytype_id = %s AND a.type_id = %s"
-    )
-
-    with closing(conn.cursor()) as cursor:
-        cursor.execute(query, (alias, entitytype_id, alias_type_id))
-
-        if cursor.rowcount == 1:
-            dn, = cursor.fetchone()
-
-            return dn
-        elif cursor.rowcount == 0:
-            raise ConfigurationError(
-                "Identifier {} is not found".format(alias))
-        elif cursor.rowcount > 1:
-            raise ConfigurationError(
-                "Identifier {} is not unique".format(alias))
-
-
-def recode_utf8(lines):
-    return (line.encode("utf-8") for line in lines)
-
-
-def remove_nul(lines):
-    return (line.replace("\0", "") for line in lines)

@@ -1,4 +1,4 @@
-from minerva_csvimporter import datatype
+from minerva.storage import datatype
 
 
 class ColumnDescriptor(object):

@@ -69,6 +69,8 @@ timestamp:
 storage:
     type: trend
     config:
-        datasource: csvimporter
-        granularity: 86400
+        data_source: csvimporter
+        granularity: 1 day
         timestamp_is_start: false
+        auto_create_trend_store: true
+        auto_create_trends: true

@@ -12,11 +12,13 @@ this software.
 import operator
 from contextlib import closing
 
-from minerva.directory.basetypes import DataSource
-from minerva.storage.notification.entityref import EntityDnRef
-from minerva.storage.notification.types import NotificationStore, Record, Attribute
+from minerva.directory import DataSource
+from minerva.directory.entityref import EntityDnRef
+from minerva.storage.notification import NotificationStore, Record, \
+    Attribute
+from minerva.storage.datatype import deduce_data_types, \
+    type_map as datatype_map
 
-from minerva_csvimporter.datatype import deduce_data_types, type_map as datatype_map
 from minerva_csvimporter.columndescriptor import ColumnDescriptor
 from minerva_csvimporter.storage.storage import Storage
 
@@ -34,16 +36,16 @@ class NotificationStorage(Storage):
 
     def store(self, column_names, fields, raw_data_rows):
         with closing(self.conn.cursor()) as cursor:
-            datasource = DataSource.from_name(cursor, self.datasource)
+            data_source = DataSource.from_name(cursor, self.datasource)
 
-            notificationstore = NotificationStore.load(cursor, datasource)
+            notification_store = NotificationStore.load(cursor, data_source)
 
             rows = list(raw_data_rows)
 
-            if notificationstore:
+            if notification_store:
                 datatype_dict = {
                     attribute.name: attribute.data_type
-                    for attribute in notificationstore.attributes
+                    for attribute in notification_store.attributes
                 }
 
                 def merge_datatypes():
@@ -97,8 +99,8 @@ class NotificationStorage(Storage):
                     for name, column_descriptor in zip(column_names, column_descriptors)
                 ]
 
-                notificationstore = NotificationStore(
-                    datasource, attributes
+                notification_store = NotificationStore(
+                    data_source, attributes
                 ).create(cursor)
 
                 self.conn.commit()
@@ -114,6 +116,6 @@ class NotificationStorage(Storage):
                     [parse(value) for parse, value in zip(parsers, values)]
                 )
 
-                notificationstore.store_record(record)(cursor)
+                notification_store.store_record(record)(cursor)
 
         self.conn.commit()

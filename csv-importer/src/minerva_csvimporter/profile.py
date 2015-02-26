@@ -42,7 +42,7 @@ def ensure_type(required_type, map_to_type=None):
 
 def type_mapping(schema):
     def fn(data):
-        return {k: schema.get(k, identity)(v) for k, v in data.iteritems()}
+        return {k: schema.get(k, identity)(v) for k, v in data.items()}
 
     return fn
 
@@ -76,7 +76,7 @@ def select_fields(names):
 
 def exclude_fields(exclude_names):
     def fn(all_names):
-        return [name for name in all_names if not name in exclude_names]
+        return [name for name in all_names if name not in exclude_names]
 
     return fn
 
@@ -85,7 +85,7 @@ def create_row_mapping(conf):
     if conf:
         return {
             name: create_column_descriptor(name, sub_conf)
-            for name, sub_conf in conf.iteritems()
+            for name, sub_conf in conf.items()
         }
     else:
         return {}
@@ -115,5 +115,5 @@ class Profile(object):
     def __init__(self, configuration):
         typed_dict = type_mapping(PROFILE_SCHEMA)(configuration)
 
-        for name, value in typed_dict.iteritems():
+        for name, value in typed_dict.items():
             setattr(self, name, value)
