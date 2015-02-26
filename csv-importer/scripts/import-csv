@@ -58,11 +58,14 @@ def main():
             logging.info("start processing from stdin")
         else:
             logging.info("start processing file {0}".format(args.infile.name))
+
         logging.debug("using identifier {0}".format(profile.identifier))
 
         profile.timestamp.set_filename(file_name)
 
-        infile = StringIO(args.infile.read().decode('utf-8'))
+        data = args.infile.read()
+
+        infile = StringIO(data)
 
         import_csv(conn, profile, infile)
 
@@ -82,112 +85,138 @@ def create_argument_parser():
     :rtype : ArgumentParser
     """
     default_minerva_instance = os.environ.get(
-        "DEFAULT_MINERVA_INSTANCE", "default")
+        "DEFAULT_MINERVA_INSTANCE", "default"
+    )
 
     parser = argparse.ArgumentParser(
-        description="Script for importing csv files")
+        description="Script for importing csv files"
+    )
 
     parser.add_argument(
         "-i", "--instance", default=default_minerva_instance,
-        help="name of the target minerva instance")
+        help="name of the target minerva instance"
+    )
 
     parser.add_argument("-u", "--user", help="user to connect to database")
 
     parser.add_argument("--data-source", help="name of data source")
 
     parser.add_argument(
-        "infile", type=argparse.FileType('rb'),
-        help="Path of file that will be processed", default=sys.stdin)
+        "infile", nargs='?', type=argparse.FileType('rt'),
+        help="Path of file that will be processed", default=sys.stdin
+    )
 
     parser.add_argument(
-        "--storage-type", help="storage type/format to use")
+        "--storage-type", help="storage type/format to use"
+    )
 
     parser.add_argument(
         "--generate-configfile", action=GenerateConfigFileAction, nargs=0,
-        help="generate default config file")
+        help="generate default config file"
+    )
 
     parser.add_argument(
         "-c", "--configfile", default="/etc/minerva/import-csv.conf",
-        help="Path to config file")
+        help="Path to config file"
+    )
 
     parser.add_argument(
         "--generate-profile-file", action=GenerateProfileFileAction, nargs=0,
-        help="generate default profile file")
+        help="generate default profile file"
+    )
 
     parser.add_argument(
         "--profile-directory", default="/etc/minerva/csv-importer/profiles",
-        help="location of profiles")
+        help="location of profiles"
+    )
 
     parser.add_argument(
-        "-p", "--profile", default="default", help="Name of profile")
+        "-p", "--profile", default="default", help="Name of profile"
+    )
 
     parser.add_argument(
         "-v", "--verbose", action="store_const", dest="log_level",
         const=logging.INFO, default=logging.ERROR,
-        help="Produce verbose output")
+        help="Produce verbose output"
+    )
 
     parser.add_argument(
         "--debug", action="store_const", dest="log_level",
         const=logging.DEBUG, default=logging.ERROR,
-        help="Produce debug output")
+        help="Produce debug output"
+    )
 
     parser.add_argument(
         "-q", "--quiet", action="store_true", dest="quiet", default=False,
-        help="produce output to log file")
+        help="produce output to log file"
+    )
 
     parser.add_argument(
         "-g", "--granularity", dest="granularity",
-        help="granularity of csv data", choices=GRANULARITIES.keys())
+        help="granularity of csv data", choices=GRANULARITIES.keys()
+    )
 
     parser.add_argument("--timezone", help="timezone of data timestamp")
 
     parser.add_argument("--identifier", help="the identifier column")
 
     parser.add_argument(
-        "--timestamp", help="default timestamp [YYYYmmdd_HHMM | NOW]")
+        "--timestamp", help="default timestamp [YYYYmmdd_HHMM | NOW]"
+    )
 
     parser.add_argument(
         "--timestamp-from-filename-regex",
-        help="regular expression for timestamp extraction from filename")
+        help="regular expression for timestamp extraction from filename"
+    )
 
     parser.add_argument(
-        "--timestamp-format", help="format of date: default: %%Y%%m%%d_%%H%%M")
+        "--timestamp-format", help="format of date: default: %%Y%%m%%d_%%H%%M"
+    )
 
     parser.add_argument(
-        "--timestamp-column", help="column containing timestamps")
+        "--timestamp-column", help="column containing timestamps"
+    )
 
     parser.add_argument(
         "--identifier-regex",
-        help="Regex for tweaking identifier in identifier field.")
+        help="Regex for tweaking identifier in identifier field."
+    )
 
     parser.add_argument(
         "--identifier-is-alias", action="store_true", default=None,
-        help="Indicated whether identifier is alias.")
+        help="Indicated whether identifier is alias."
+    )
 
     parser.add_argument(
         "--timestamp-is-start", action="store_true", default=None,
         help="(Timestamp + granularity) will be used as timestamp "
-        "in Minerva database.")
+        "in Minerva database."
+    )
 
     parser.add_argument(
         "--fields", dest="fields", nargs="+",
-        help="Fields to import. If not specified all fields are imported.")
+        help="Fields to import. If not specified all fields are imported."
+    )
 
     parser.add_argument(
         "--ignore-fields", dest="ignore_fields", nargs="+",
-        help="Fields to ignore. If not specified no fields are ignored.")
+        help="Fields to ignore. If not specified no fields are ignored."
+    )
 
     parser.add_argument(
         "--character-encoding", dest="character_encoding",
-        help="character encoding of the source file")
+        help="character encoding of the source file"
+    )
 
     parser.add_argument(
-        "--dialect", help="CSV dialect", choices=["auto", "prime"])
+        "--dialect", help="CSV dialect", choices=["auto", "prime"]
+    )
 
     parser.add_argument(
         "--value-mapping",
         help="json formatted string for mapping specific values to other "
-        "values for specific columns (e.g. {\"ccr\":{\"-1\":\"\"}})")
+        "values for specific columns (e.g. {\"ccr\":{\"-1\":\"\"}})"
+    )
 
     return parser
 

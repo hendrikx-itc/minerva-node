@@ -1,16 +1,14 @@
 from subprocess import Popen, PIPE
 from contextlib import closing
 
-from nose.tools import eq_
-
-from minerva.directory.helpers_v4 import DataSource, EntityType
-
-from minerva_db import connect
+from minerva.directory import DataSource, EntityType
+from minerva.test import eq_, with_conn, clear_database
 
 
-def test_cmd_1():
+@with_conn(clear_database)
+def test_cmd_1(conn):
     file_path = "/tmp/test.csv"
-    datasource_name = "test-src"
+    data_source_name = "test-src"
 
     with open(file_path, "wt") as csv_file:
         csv_file.write(
@@ -18,16 +16,15 @@ def test_cmd_1():
             "Node, 001, 12, 232, high\n"
             "Node, 002, 43, 334, medium\n")
 
-    with closing(connect()) as conn:
-        with closing(conn.cursor()) as cursor:
-            DataSource.from_name(cursor, datasource_name)
-            EntityType.from_name(cursor, 'Node')
+    with closing(conn.cursor()) as cursor:
+        DataSource.from_name(data_source_name)(cursor)
+        EntityType.from_name('Node')(cursor)
 
-        conn.commit()
+    conn.commit()
 
     cmd = [
         "import-csv", "--timestamp", "now",
-        "--identifier", "Node={name}", "--datasource", datasource_name,
+        "--identifier", "Node={name}", "--data-source", data_source_name,
         file_path
     ]
     p = Popen(cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
@@ -39,9 +36,14 @@ def test_cmd_1():
     eq_('', stdout_data)
 
 
-def test_cmd_2():
+@with_conn(clear_database)
+def test_cmd_2(conn):
     file_path = "/tmp/test.csv"
-    datasource_name = "test-src"
+    with closing(conn.cursor()) as cursor:
+        data_source = DataSource.create("test-src", "")(cursor)
+        entity_type = EntityType.create("Node", "")(cursor)
+
+    conn.commit()
 
     with open(file_path, "wt") as csv_file:
         csv_file.write(
@@ -51,7 +53,7 @@ def test_cmd_2():
 
     cmd = [
         "import-csv", "--timestamp", "now",
-        "--identifier", "Node={name}", "--datasource", datasource_name,
+        "--identifier", "Node={name}", "--data-source", data_source.name,
         file_path
     ]
     p = Popen(cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
@@ -63,45 +65,48 @@ def test_cmd_2():
     eq_('', stdout_data)
 
 
-def test_cmd_identifier_regex():
-    file_path = "/tmp/test.csv"
-    datasource_name = "test-src"
+@with_conn(clear_database)
+def test_cmd_identifier_regex(conn):
+    with closing(conn.cursor()) as cursor:
+        data_source = DataSource.create("test-src", "")(cursor)
 
-    with open(file_path, "wt") as csv_file:
-        csv_file.write(
-            "type, name, a, b, c\n"
-            "Node, node0001, 12, 232, high\n"
-            "Node, node0102, 43, 334, medium\n")
+    test_file = (
+        "type, name, a, b, c\n"
+        "Node, node0001, 12, 232, high\n"
+        "Node, node0102, 43, 334, medium\n"
+    ).encode()
 
     cmd = [
         "import-csv", "--timestamp", "now",
         "--identifier", "Node={name}", "--identifier-regex",
-        "(Node=)node[0]+(\\d+)", "--datasource", datasource_name, file_path
+        "(Node=)node[0]+(\\d+)", "--data-source", data_source.name
     ]
 
     p = Popen(cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
 
-    stdout_data, stderr_data = p.communicate(input=None)
+    stdout_data, stderr_data = p.communicate(input=test_file)
 
     eq_('', stderr_data)
 
     eq_('', stdout_data)
 
 
-def test_cmd_fixed_identifier():
-    datasource_name = "test-src"
+@with_conn(clear_database)
+def test_cmd_fixed_identifier(conn):
+    with closing(conn.cursor()) as cursor:
+        data_source = DataSource.create("test-src", "")(cursor)
 
     data = (
-        u"a, b, c\n"
+        "a, b, c\n"
         "12, 232, high\n"
         "43, 334, medium\n"
-    )
+    ).encode()
 
     cmd = [
         "import-csv", "--timestamp", "now",
         "--identifier", "Node=001",
-        "--storage-type", "notification",
-        "--datasource", datasource_name
+        #"--storage-type", "notification",
+        "--data-source", data_source.name
     ]
 
     p = Popen(cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)

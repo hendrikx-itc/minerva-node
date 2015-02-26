@@ -37,7 +37,6 @@ class TrendStorage(Storage):
         self.data_source_name = data_source
         self.granularity = create_granularity(granularity)
         self.timestamp_is_start = timestamp_is_start
-        self.conn = None
 
         if self.timestamp_is_start:
             self.offset = partial(
