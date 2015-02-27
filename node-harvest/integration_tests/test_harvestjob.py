@@ -14,6 +14,7 @@ from minerva.storage.trend.datapackage import DefaultPackage
 from minerva.storage.trend import TrendDescriptor
 from minerva.storage.trend.tabletrendstore import TableTrendStore, \
     TableTrendStoreDescriptor
+from minerva.storage.trend.engine import TrendEngine
 from minerva.storage import datatype
 from minerva_harvesting.pluginapi import HarvestPlugin
 from minerva_node import MinervaContext
@@ -35,13 +36,15 @@ class IntegerParser(object):
     def parse(data, file_name):
         line = data.readline()
 
-        yield DefaultPackage(
-            create_granularity('3600 seconds'),
-            pytz.utc.localize(datetime(2015, 2, 27, 15, 0)),
-            ['x'],
-            [
-                ('Node=001', (int(line), ))
-            ]
+        yield TrendEngine.store(
+            DefaultPackage(
+                create_granularity('3600 seconds'),
+                pytz.utc.localize(datetime(2015, 2, 27, 15, 0)),
+                ['x'],
+                [
+                    ('Node=001', (int(line), ))
+                ]
+            )
         )
 
 

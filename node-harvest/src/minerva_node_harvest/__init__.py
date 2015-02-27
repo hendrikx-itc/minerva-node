@@ -19,14 +19,9 @@ import gzip
 from contextlib import closing
 
 from minerva.directory import DataSource
-from minerva.directory.distinguishedname import entity_type_name_from_dn
 from minerva.directory.existence import Existence
 
 from minerva_harvesting.plugins import load_plugins
-
-from minerva.storage.trend.engine import TrendEngine
-from minerva.storage.attribute.engine import AttributeEngine
-from minerva.storage.notification.engine import NotificationEngine
 
 from minerva_node.error import JobError
 from minerva_node import NodePlugin, Job
@@ -108,21 +103,6 @@ class HarvestJob(Job):
                 "could not load parser plugin '{}'".format(data_type)
             )
 
-        storage_type = plugin.storage_type()
-
-        storage_engines = {
-            'trend': TrendEngine,
-            'attribute': AttributeEngine,
-            'notification': NotificationEngine
-        }
-
-        try:
-            storage_engine = storage_engines[storage_type]
-        except KeyError:
-            raise HarvestError(
-                "no storage class named '{}'".format(storage_type)
-            )
-
         parser = plugin.create_parser(parser_config)
 
         encoding = self.description.get("encoding", "utf-8")
@@ -132,8 +112,8 @@ class HarvestJob(Job):
         logging.debug("opened uri '{}'".format(uri))
 
         try:
-            for package in parser.parse(data_stream, os.path.basename(uri)):
-                storage_engine.store(package)(data_source)(
+            for store_cmd in parser.parse(data_stream, os.path.basename(uri)):
+                store_cmd(data_source)(
                     self.minerva_context.writer_conn
                 )
         except Exception:
@@ -151,25 +131,6 @@ class HarvestJob(Job):
 
         if update_existence:
             self.existence.flush(datetime.now())
-
-
-def dispatch_raw_and_mark_existing(
-        store_raw, filter_types, mark_existing, raw_datapackage):
-    """
-    :param store_raw: a storage plugin 'store_raw' function
-    :param filter_types: a list of entity type names that will be filtered for
-    existence marking
-    :param mark_existing: a function that takes arguments (dns, timestamp)
-    """
-    dns = [
-        dn
-        for dn, _timestamp, _values in raw_datapackage.rows
-        if entity_type_name_from_dn(dn) in filter_types
-    ]
-
-    mark_existing(dns)
-
-    store_raw(raw_datapackage)
 
 
 def open_uri(uri, encoding):
