@@ -6,7 +6,7 @@ Provides the function process_file for processing a single file.
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2008-2011 Hendrikx-ITC B.V.
+Copyright (C) 2008-2015 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -19,8 +19,6 @@ import time
 import traceback
 from operator import not_
 
-import progressbar
-
 from minerva.util import compose
 
 from minerva_harvesting.error import DataError
@@ -30,17 +28,17 @@ class ParseError(Exception):
     pass
 
 
-def process_file(filepath, plugin, parser_config, handle_package,
-                 show_progress=False):
+def process_file(
+        file_path, plugin, parser_config, handle_package, show_progress=False):
     """
     Process a single file with specified plugin.
     """
-    if not os.path.exists(filepath):
-        raise Exception("Could not find file '{0}'".format(filepath))
+    if not os.path.exists(file_path):
+        raise Exception("Could not find file '{0}'".format(file_path))
 
-    _directory, filename = os.path.split(filepath)
+    _directory, filename = os.path.split(file_path)
 
-    with open(filepath) as data_file:
+    with open(file_path) as data_file:
         stop_event = threading.Event()
         condition = compose(not_, stop_event.is_set)
 
@@ -72,18 +70,17 @@ def start_progress_reporter(data_file, condition):
     size = data_file.tell()
     data_file.seek(0, 0)
 
-    widgets = [progressbar.Percentage(), " ", progressbar.Bar(), " ",
-               progressbar.ETA()]
-
-    progress_bar = progressbar.ProgressBar(
-        maxval=size, widgets=widgets).start()
-
     def progress_reporter():
         """
         Show progress in the file on the console using a progress bar.
         """
         while condition():
-            progress_bar.update(data_file.tell())
+            position = data_file.tell()
+
+            percentage = position / size * 100
+
+            print('{}'.format(percentage))
+
             time.sleep(1.0)
 
     thread = threading.Thread(target=progress_reporter)
