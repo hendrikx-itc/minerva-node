@@ -26,7 +26,7 @@ from minerva_harvesting.plugins import load_plugins
 
 from minerva_node.error import JobError
 from minerva_node import NodePlugin, Job
-from harvest.done_actions import execute_action
+from minerva_node_harvest.done_actions import execute_action
 
 
 DEFAULT_ACTION = ["remove"]
