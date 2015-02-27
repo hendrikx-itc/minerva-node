@@ -11,8 +11,6 @@ this software.
 """
 import logging
 
-from minerva import storage
-
 from minerva_node.pluginapi import NodePlugin
 
 
