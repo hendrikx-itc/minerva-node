@@ -11,12 +11,14 @@ this software.
 """
 import pkg_resources
 
-ENTRYPOINT = "node.plugins"
+ENTRY_POINT = "node.plugins"
 
 
 def load_plugins():
     """
     Load and return a list with plugins.
     """
-    return [entrypoint.load()
-            for entrypoint in pkg_resources.iter_entry_points(group=ENTRYPOINT)]
+    return [
+        entry_point.load()
+        for entry_point in pkg_resources.iter_entry_points(group=ENTRY_POINT)
+    ]

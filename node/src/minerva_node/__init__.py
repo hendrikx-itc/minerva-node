@@ -13,14 +13,16 @@ import logging
 
 from minerva import storage
 
+from minerva_node.pluginapi import NodePlugin
 
-class Job(object):
+
+class Job():
     """
     The Node job base class.
     """
-    def __init__(self, type, id, description):
-        self.type = type
-        self.id = id
+    def __init__(self, id_, type_, description):
+        self.id = id_
+        self.type = type_
         self.description = description
 
     def execute(self):
@@ -34,7 +36,7 @@ class Job(object):
         return "{0.type} {0.id}, '{0.description}'".format(self)
 
 
-class MinervaContext(object):
+class MinervaContext():
     """
     Maintains a Minerva context, including things like a connection to the
     writable Minerva database, a connection to the readable Minerva database and
@@ -43,8 +45,3 @@ class MinervaContext(object):
     def __init__(self, writer_conn, reader_conn):
         self.writer_conn = writer_conn
         self.reader_conn = reader_conn
-        self.storage_providers = dict([(name, p(writer_conn, api_version=4))
-                for name, p in storage.load_plugins().iteritems()])
-
-        for name in self.storage_providers.keys():
-            logging.info("loaded storage plugin '{}'".format(name))
