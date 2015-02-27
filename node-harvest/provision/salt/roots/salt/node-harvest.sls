@@ -1,24 +1,32 @@
-git+git://github.com/hendrikx-itc/minerva:
-  pip.installed
+git+git://github.com/hendrikx-itc/minerva@release/5.0:
+  pip.installed:
+    - bin_env: /usr/bin/pip3
 
-https://github.com/hendrikx-itc/minerva-etl:
+minerva_etl_repo:
   git.latest:
+    - name: "https://github.com/hendrikx-itc/minerva-etl"
+    - rev: release/5.0
     - target: /home/vagrant/minerva-etl
 
 /home/vagrant/minerva-etl/node:
   pip.installed:
+    - bin_env: /usr/bin/pip3
     - require:
-      - git: https://github.com/hendrikx-itc/minerva-etl
+      - git: minerva_etl_repo
 
 /home/vagrant/minerva-etl/harvesting:
   pip.installed:
+    - bin_env: /usr/bin/pip3
     - require:
-      - git: https://github.com/hendrikx-itc/minerva-etl
-      - pip: git+git://github.com/hendrikx-itc/minerva
+      - git: minerva_etl_repo
+      - pip: "git+git://github.com/hendrikx-itc/minerva@release/5.0"
 
-python-nose:
+python3-nose:
   pkg.installed
 
 node-harvest:
   pip.installed:
+    - bin_env: /usr/bin/pip3
     - editable: /vagrant/
+    - require:
+      - pip: /home/vagrant/minerva-etl/harvesting

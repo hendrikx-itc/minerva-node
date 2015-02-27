@@ -1,10 +1,20 @@
+from datetime import datetime
 from contextlib import closing
 import gzip
 
-from harvest import HarvestJob
+import pytz
 
-from minerva.directory.helpers import create_datasource
+from minerva_node_harvest import HarvestJob
+
+from minerva.test import clear_database
+from minerva.directory import DataSource, EntityType
 from minerva.directory.existence import Existence
+from minerva.storage.trend.granularity import create_granularity
+from minerva.storage.trend.datapackage import DefaultPackage
+from minerva.storage.trend import TrendDescriptor
+from minerva.storage.trend.tabletrendstore import TableTrendStore, \
+    TableTrendStoreDescriptor
+from minerva.storage import datatype
 from minerva_harvesting.pluginapi import HarvestPlugin
 from minerva_node import MinervaContext
 
@@ -15,7 +25,7 @@ from psycopg2 import connect
 class DummyParser(object):
     @staticmethod
     def parse(data, file_name):
-        pass
+        return tuple()
 
 
 class IntegerParser(object):
@@ -25,7 +35,14 @@ class IntegerParser(object):
     def parse(data, file_name):
         line = data.readline()
 
-        assert int(line) == IntegerParser.EXPECTED_VALUE
+        yield DefaultPackage(
+            create_granularity('3600 seconds'),
+            pytz.utc.localize(datetime(2015, 2, 27, 15, 0)),
+            ['x'],
+            [
+                ('Node=001', (int(line), ))
+            ]
+        )
 
 
 test_parsers = {
@@ -51,18 +68,20 @@ def test_execute():
         test_file.write('42\n')
 
     with closing(connect('')) as conn:
-        create_datasource(
-            conn, 'pm-system-1', 'data source for integration test',
-            'Europe/Amsterdam'
-        )
+        clear_database(conn)
+
+        with closing(conn.cursor()) as cursor:
+            DataSource.create(
+                'pm-system-1', 'data source for integration test'
+            )(cursor)
 
         job = HarvestJob(
+            id_=1000,
             plugins={
                 'test-data': TestPlugin()
             },
             existence=Existence(conn),
             minerva_context=MinervaContext(conn, conn),
-            id=1000,
             description={
                 "data_type": "test-data",
                 "on_success": [
@@ -85,22 +104,40 @@ def test_execute():
 def test_execute_gzipped():
     file_path = '/tmp/data.csv.gz'
 
-    with gzip.open(file_path, 'w') as test_file:
+    with gzip.open(file_path, 'wt') as test_file:
         test_file.write('{}\n'.format(IntegerParser.EXPECTED_VALUE))
 
     with closing(connect('')) as conn:
-        create_datasource(
-            conn, 'pm-system-1', 'data source for integration test',
-            'Europe/Amsterdam'
-        )
+        clear_database(conn)
+
+        with closing(conn.cursor()) as cursor:
+            data_source = DataSource.create(
+                'pm-system-1', 'data source for integration test'
+            )(cursor)
+
+            entity_type = EntityType.create(
+                'Node', 'entity type for integration test'
+            )(cursor)
+
+            TableTrendStore.create(TableTrendStoreDescriptor(
+                data_source,
+                entity_type,
+                create_granularity('3600 seconds'),
+                [
+                    TrendDescriptor('x', datatype.Integer, '')
+                ],
+                86400 * 7
+            ))(cursor)
+
+        conn.commit()
 
         job = HarvestJob(
+            id_=1001,
             plugins={
                 'test-data': TestPlugin()
             },
             existence=Existence(conn),
             minerva_context=MinervaContext(conn, conn),
-            id=1001,
             description={
                 "data_type": "test-data",
                 "on_success": [

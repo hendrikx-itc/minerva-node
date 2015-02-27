@@ -37,4 +37,7 @@ zstyle ':completion:*:*:kill:*:processes' list-colors '=(#b) #([0-9]#)*=0=01;31'
 zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
 
 PATH=/home/vagrant/bin:$PATH
-export PGDATABASE=minerva
+
+export MINERVA_DB_NAME=minerva
+export MINERVA_DB_SCRIPT_ROOT=/home/vagrant/minerva/schema/scripts
+export PGDATABASE=$MINERVA_DB_NAME

@@ -24,6 +24,10 @@ from minerva.directory.existence import Existence
 
 from minerva_harvesting.plugins import load_plugins
 
+from minerva.storage.trend.engine import TrendEngine
+from minerva.storage.attribute.engine import AttributeEngine
+from minerva.storage.notification.engine import NotificationEngine
+
 from minerva_node.error import JobError
 from minerva_node import NodePlugin, Job
 from minerva_node_harvest.done_actions import execute_action
@@ -69,6 +73,7 @@ class HarvestPlugin(NodePlugin):
 
 class HarvestJob(Job):
     def __init__(self, id_, plugins, existence, minerva_context, description):
+        super().__init__('harvest', id_, description)
         self.id = id_
         self.plugins = plugins
         self.existence = existence
@@ -105,25 +110,17 @@ class HarvestJob(Job):
 
         storage_type = plugin.storage_type()
 
+        storage_engines = {
+            'trend': TrendEngine,
+            'attribute': AttributeEngine,
+            'notification': NotificationEngine
+        }
+
         try:
-            storage_provider = self.minerva_context.storage_providers[storage_type]
+            storage_engine = storage_engines[storage_type]
         except KeyError:
             raise HarvestError(
-                "could not load '{}' storage provider plugin".format(
-                    storage_type
-                )
-            )
-
-        dispatch_raw_data_package = partial(
-            storage_provider.store_raw, data_source
-        )
-
-        if update_existence:
-            dispatch_raw_data_package = partial(
-                dispatch_raw_and_mark_existing,
-                dispatch_raw_data_package,
-                update_existence,
-                self.existence.mark_existing
+                "no storage class named '{}'".format(storage_type)
             )
 
         parser = plugin.create_parser(parser_config)
@@ -136,7 +133,9 @@ class HarvestJob(Job):
 
         try:
             for package in parser.parse(data_stream, os.path.basename(uri)):
-                dispatch_raw_data_package(package)
+                storage_engine.store(package)(data_source)(
+                    self.minerva_context.writer_conn
+                )
         except Exception:
             stack_trace = traceback.format_exc()
 

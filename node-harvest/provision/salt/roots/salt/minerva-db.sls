@@ -9,8 +9,9 @@ minerva-db-packages:
       - libpq-dev
       - python-virtualenv
       - language-pack-nl
-      - python-psycopg2
-      - python-dateutil
+      - python3-pip
+      - python3-psycopg2
+      - python3-dateutil
       - git
 
 postgresql:
@@ -19,9 +20,10 @@ postgresql:
 
 minerva-python-package:
   pip.installed:
-    - name: git+https://github.com/hendrikx-itc/minerva
+    - name: git+https://github.com/hendrikx-itc/minerva@release/5.0
+    - bin_env: /usr/bin/pip3
     - requires:
-      - pkg: python-psycopg2
+      - pkg: python3-psycopg2
       - pkg: git
 
 vagrant:
@@ -34,25 +36,20 @@ vagrant:
     - require:
       - service: postgresql
 
-minerva:
-  postgres_database:
-    - present
-
 minerva-working-copy:
-  cmd.run:
-    - name: 'git clone https://github.com/hendrikx-itc/minerva /home/vagrant/minerva'
-    - require:
-      - pkg: git
-    - creates: /home/vagrant/minerva
+  git.latest:
+    - name: "https://github.com/hendrikx-itc/minerva"
+    - rev: release/5.0
+    - target: /home/vagrant/minerva
 
 init-minerva-db:
   cmd.wait:
-    - name: '/home/vagrant/minerva/schema/run-scripts /home/vagrant/minerva/schema/scripts'
+    - name: '/home/vagrant/bin/create-database'
     - user: vagrant
     - env:
       - PGDATABASE: minerva
     - watch:
-      - postgres_database: minerva
+      - postgres_user: vagrant
 
 /etc/minerva/instances/default.conf:
   file.managed:
