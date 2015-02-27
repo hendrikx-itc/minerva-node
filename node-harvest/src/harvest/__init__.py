@@ -2,7 +2,7 @@
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2012 Hendrikx-ITC B.V.
+Copyright (C) 2012-2015 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -16,25 +16,27 @@ from functools import partial
 import codecs
 import traceback
 import gzip
+from contextlib import closing
 
-from minerva.util import compose
-from minerva.directory.helpers import get_datasource, NoSuchDataSourceError
-from minerva.directory.distinguishedname import explode
+from minerva.directory import DataSource
+from minerva.directory.distinguishedname import entity_type_name_from_dn
 from minerva.directory.existence import Existence
 
+from minerva_harvesting.plugins import load_plugins
+
 from minerva_node.error import JobError
+from minerva_node import NodePlugin, Job
+from harvest.done_actions import execute_action
 
-from harvest.plugins import ENTRYPOINT, load_plugins
 
-
-DEFAULT_ACTION = {"name": "remove", "args": []}
+DEFAULT_ACTION = ["remove"]
 
 
 class HarvestError(JobError):
     pass
 
 
-class HarvestPlugin(object):
+class HarvestPlugin(NodePlugin):
     name = "harvest"
     description = "a harvesting plugin"
 
@@ -43,151 +45,132 @@ class HarvestPlugin(object):
         self.plugins = load_plugins()
         self.existence = Existence(minerva_context.writer_conn)
 
-    def create_job(self, id, description, config):
+    def create_job(self, id_, description, config):
         """
         A job description is a dictionary in the following form:
 
             {
-                "datatype": "pm_3gpp",
-                "on_failure": {
-                    "name": "move",
-                    "args": ["/data/failed/"]
-                },
+                "data_type": "pm_3gpp",
+                "on_failure": [
+                    "move_to", "/data/failed/"
+                ],
+                "on_success": [
+                    "remove"
+                ],
                 "parser_config": {},
                 "uri": "/data/new/some_file.xml",
-                "datasource": "pm-system-1"
+                "data_source": "pm-system-1"
             }
         """
-        return HarvestJob(self.plugins, self.existence, self.minerva_context, id, description)
+        return HarvestJob(
+            self.plugins, self.existence, self.minerva_context, id_, description
+        )
 
 
-class HarvestJob(object):
-    def __init__(self, plugins, existence, minerva_context, id, description):
+class HarvestJob(Job):
+    def __init__(self, id_, plugins, existence, minerva_context, description):
+        self.id = id_
         self.plugins = plugins
         self.existence = existence
         self.minerva_context = minerva_context
-        self.id = id
         self.description = description
 
     def __str__(self):
         return "'{}'".format(self.description["uri"])
 
     def execute(self):
-        datasource_name = self.description["datasource"]
+        data_source_name = self.description["data_source"]
 
-        try:
-            datasource = get_datasource(self.minerva_context.writer_conn, datasource_name)
-        except NoSuchDataSourceError:
-            raise HarvestError("no datasource with name '{}'".format(datasource_name))
+        with closing(self.minerva_context.writer_conn.cursor()) as cursor:
+            data_source = DataSource.get_by_name(data_source_name)(cursor)
+
+            if data_source is None:
+                raise HarvestError(
+                    "no data source with name '{}'".format(data_source_name)
+                )
 
         parser_config = self.description.get("parser_config", {})
         uri = self.description["uri"]
 
         update_existence = parser_config.get("update_existence", None)
 
-        datatype = self.description["datatype"]
+        data_type = self.description["data_type"]
 
         try:
-            plugin = self.plugins[datatype]
+            plugin = self.plugins[data_type]
         except KeyError:
-            raise HarvestError("could not load parser plugin '{}'".format(datatype))
+            raise HarvestError(
+                "could not load parser plugin '{}'".format(data_type)
+            )
 
-        storagetype = plugin.storagetype()
+        storage_type = plugin.storage_type()
 
         try:
-            storage_provider = self.minerva_context.storage_providers[storagetype]
+            storage_provider = self.minerva_context.storage_providers[storage_type]
         except KeyError:
-            raise HarvestError("could not load '{}' storage provider plugin".format(storagetype))
+            raise HarvestError(
+                "could not load '{}' storage provider plugin".format(
+                    storage_type
+                )
+            )
 
-        dispatch_raw_datapackage = partial(storage_provider.store_raw, datasource)
+        dispatch_raw_data_package = partial(
+            storage_provider.store_raw, data_source
+        )
 
         if update_existence:
-            dispatch_raw_datapackage = partial(dispatch_raw_and_mark_existing,
-                    dispatch_raw_datapackage, update_existence,
-                    self.existence.mark_existing)
+            dispatch_raw_data_package = partial(
+                dispatch_raw_and_mark_existing,
+                dispatch_raw_data_package,
+                update_existence,
+                self.existence.mark_existing
+            )
 
-        dispatch_raw = compose(dispatch_raw_datapackage, storage_provider.RawDataPackage)
-
-        parser = plugin.create_parser(dispatch_raw, parser_config)
+        parser = plugin.create_parser(parser_config)
 
         encoding = self.description.get("encoding", "utf-8")
 
-        datastream = open_uri(uri, encoding)
+        data_stream = open_uri(uri, encoding)
 
         logging.debug("opened uri '{}'".format(uri))
 
         try:
-            parser.parse(datastream, os.path.basename(uri))
-        except Exception as exc:
-            stacktrace = traceback.format_exc()
+            for package in parser.parse(data_stream, os.path.basename(uri)):
+                dispatch_raw_data_package(package)
+        except Exception:
+            stack_trace = traceback.format_exc()
 
-            execute_action(uri, self.description.get("on_failure", DEFAULT_ACTION))
+            execute_action(
+                uri, self.description.get("on_failure", DEFAULT_ACTION)
+            )
 
-            raise JobError(stacktrace)
+            raise JobError(stack_trace)
         else:
-            execute_action(uri, self.description.get("on_success", DEFAULT_ACTION))
+            execute_action(
+                uri, self.description.get("on_success", DEFAULT_ACTION)
+            )
 
         if update_existence:
             self.existence.flush(datetime.now())
 
 
-def execute_action(uri, action):
-    if action:
-        action_fn = done_actions[action["name"]]
-        action_args = action["args"]
-        action_fn(uri, *action_args)
-
-
-def remove(path):
-    try:
-        os.remove(path)
-    except Exception as exc:
-        logging.warn(str(exc))
-
-
-def move(path, to):
-    filepath, filename = os.path.split(path)
-    new = os.path.join(to, filename)
-
-    try:
-        os.rename(path, new)
-    except Exception as exc:
-        logging.warn(str(exc))
-
-
-def do_nothing(path):
-    pass
-
-
-done_actions = {
-    "remove": remove,
-    "move": move,
-    "do_nothing": do_nothing
-}
-
-
-def dispatch_raw_and_mark_existing(store_raw, filter_types, mark_existing, raw_datapackage):
+def dispatch_raw_and_mark_existing(
+        store_raw, filter_types, mark_existing, raw_datapackage):
     """
     :param store_raw: a storage plugin 'store_raw' function
-    :param filter_types: a list of entitytype names that will be filtered for
+    :param filter_types: a list of entity type names that will be filtered for
     existence marking
     :param mark_existing: a function that takes arguments (dns, timestamp)
     """
-    dns = [dn for dn, _timestamp, _values in raw_datapackage.rows if entitytype_from_dn(dn) in
-            filter_types]
+    dns = [
+        dn
+        for dn, _timestamp, _values in raw_datapackage.rows
+        if entity_type_name_from_dn(dn) in filter_types
+    ]
 
     mark_existing(dns)
 
     store_raw(raw_datapackage)
-
-
-def entitytype_from_dn(dn):
-    """
-    Return the entitytype name from a Distinguished Name
-    """
-    parts = explode(dn)
-
-    return parts[-1][0]
 
 
 def open_uri(uri, encoding):
