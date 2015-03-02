@@ -10,6 +10,7 @@ the Free Software Foundation; either version 3, or (at your option) any later
 version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
+from minerva.storage.trend.datapackage import DefaultPackage
 from minerva.util import expand_args, first, grouped_by
 from minerva.directory.distinguishedname import entity_type_name_from_dn, \
     InvalidDistinguishedNameError
@@ -68,4 +69,4 @@ def package(key, records):
         for dn, value_dict in dict_rows_by_dn.items()
     ]
 
-    return granularity, timestamp, field_names, rows
+    return DefaultPackage(granularity, timestamp, field_names, rows)
