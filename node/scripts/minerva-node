@@ -119,8 +119,7 @@ def main():
     create_reader_connection = partial(minerva_instance.connect_ro, user=user)
 
     handler_map = {
-        # TODO: Select appropriate exception type
-        Exception: partial(
+        psycopg2.OperationalError: partial(
             logging.error,
             "could not connect to database, waiting"
         )
