@@ -120,7 +120,6 @@ def main():
 
     handler_map = {
             psycopg2.OperationalError: lambda exc: logging.error("could not connect to database({}), waiting".format(exc))
-        )
     }
 
     retry_condition = compose(not_, stop_event.is_set)
