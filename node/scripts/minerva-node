@@ -21,7 +21,6 @@ import signal
 from functools import partial
 from time import sleep
 import threading
-from itertools import imap
 import json
 import traceback
 from operator import not_
@@ -48,7 +47,7 @@ SIGNAL_MAP = {
     signal.SIGUSR1: "SIGUSR1"
 }
 
-NOJOB_TIMEOUT = 1
+NO_JOB_TIMEOUT = 1
 
 
 class StartupError(Exception):
@@ -59,39 +58,47 @@ def main():
     """
     Script entry point
     """
-    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
-                                              "default")
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "-c", "--configfile", dest="configfile",
-        default="/etc/minerva/node.conf", help="the path to the config file")
+        default="/etc/minerva/node.conf", help="the path to the config file"
+    )
 
     parser.add_argument(
-        "-i", "--instance", default=default_minerva_instance,
-        help="name of the target minerva instance")
+        "-i", "--instance", help="name of the target minerva instance"
+    )
 
     parser.add_argument("-u", "--user", help="user to connect to database")
 
     parser.add_argument(
         "--list-plugins", action=ListPluginsAction,
-        nargs=0, help="list installed plugins")
+        nargs=0, help="list installed plugins"
+    )
 
     parser.add_argument(
         "--generate-configfile", action=GenerateConfigFileAction,
-        nargs=0, help="generate base config file")
+        nargs=0, help="generate base config file"
+    )
 
     parser.add_argument(
-        "--slot", dest="slot", default=1, type=int, help="node slot number")
+        "--slot", dest="slot", default=1, type=int, help="node slot number"
+    )
 
     parser.add_argument(
         "-v", "--version", action="version",
-        version="%(prog)s {}".format(version.__version__))
+        version="%(prog)s {}".format(version.__version__)
+    )
 
     args = parser.parse_args()
 
-    minerva_instance = MinervaInstance.load(args.instance)
+    minerva_instance_name = (
+        args.instance or
+        os.environ.get("DEFAULT_MINERVA_INSTANCE") or
+        "default"
+    )
+
+    minerva_instance = MinervaInstance.load(minerva_instance_name)
 
     try:
         config = load_config(get_defaults("node.conf"), args.configfile)
@@ -107,28 +114,27 @@ def main():
     signal.signal(signal.SIGINT, stop_node)
     signal.signal(signal.SIGHUP, stop_node)
 
-    log_filename = "node_{0:d}.log".format(args.slot)
-
-    log.setup_logging(
-        config["log_directory"], log_filename, config["log_rotation_size"],
-        config["log_level"])
-
     user = args.user or config["database"]["user"] or "minerva_admin"
 
     create_writer_connection = partial(minerva_instance.connect, user=user)
     create_reader_connection = partial(minerva_instance.connect_ro, user=user)
 
     handler_map = {
-        OperationalError: partial(logging.error,
-                                  "could not connect to database, waiting")
+        OperationalError: partial(
+            logging.error,
+            "could not connect to database, waiting"
+        )
     }
 
     retry_condition = compose(not_, stop_event.is_set)
 
-    writer_conn = retry_while(create_writer_connection, handler_map,
-                              retry_condition)
-    reader_conn = retry_while(create_reader_connection, handler_map,
-                              retry_condition)
+    writer_conn = retry_while(
+        create_writer_connection, handler_map, retry_condition
+    )
+
+    reader_conn = retry_while(
+        create_reader_connection, handler_map, retry_condition
+    )
 
     if writer_conn and reader_conn:
         minerva_context = MinervaContext(writer_conn, reader_conn)
@@ -146,8 +152,9 @@ def main():
 
 
 def log_signal(signum, _frame):
-    logging.info("received {0!s} signal".format(
-        SIGNAL_MAP.get(signum, signum)))
+    logging.info(
+        "received {0!s} signal".format(SIGNAL_MAP.get(signum, signum))
+    )
 
 
 def setup_node(stop_event, minerva_context):
@@ -160,9 +167,10 @@ def setup_node(stop_event, minerva_context):
 
     job_producer = iter_queue(
         stop_event, partial(get_job, minerva_context.writer_conn),
-        jobqueue.NoJobAvailable, NOJOB_TIMEOUT)
+        jobqueue.NoJobAvailable, NO_JOB_TIMEOUT
+    )
 
-    jobs = imap(partial(create_job, plugin_dict), job_producer)
+    jobs = map(partial(create_job, plugin_dict), job_producer)
 
     process = partial(process_job, minerva_context.writer_conn)
 
@@ -229,11 +237,6 @@ def fail_job(conn, job_id, message):
         return True
 
 
-#def do_while(condition=k(True), fn):
-#	while condition():
-#		fn()
-
-
 def process_job(conn, job):
     try:
         job.execute()
@@ -247,7 +250,7 @@ def process_job(conn, job):
         logging.error(exc)
         message = str(exc)
         fail_job(conn, job.id, message)
-    except Exception as exc:
+    except Exception:
         safe_rollback(conn)
         message = traceback.format_exc()
         logging.error(message)
