@@ -29,7 +29,6 @@ from contextlib import closing
 import psycopg2
 
 from minerva.util import iter_queue, after, each, compose, retry_while
-from minerva.db import OperationalError
 from minerva.system import jobqueue
 from minerva.instance import MinervaInstance
 
@@ -120,7 +119,8 @@ def main():
     create_reader_connection = partial(minerva_instance.connect_ro, user=user)
 
     handler_map = {
-        OperationalError: partial(
+        # TODO: Select appropriate exception type
+        Exception: partial(
             logging.error,
             "could not connect to database, waiting"
         )
