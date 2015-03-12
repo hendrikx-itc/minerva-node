@@ -28,7 +28,7 @@ def get_defaults(name):
     """
     return pkg_resources.resource_string(
         "minerva_node", "defaults/{}".format(name)
-    )
+    ).decode(encoding='UTF-8')
 
 
 def load_config(defaults, path):
