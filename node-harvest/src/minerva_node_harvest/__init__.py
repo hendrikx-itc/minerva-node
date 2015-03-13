@@ -62,7 +62,7 @@ class HarvestPlugin(NodePlugin):
             }
         """
         return HarvestJob(
-            self.plugins, self.existence, self.minerva_context, id_, description
+            id_, self.plugins, self.existence, self.minerva_context, description
         )
 
 
