@@ -11,6 +11,8 @@ this software.
 """
 import logging
 
+from minerva.system.job import fail_job, finish_job
+
 from minerva_node.pluginapi import NodePlugin
 
 
@@ -32,6 +34,12 @@ class Job():
 
     def __str__(self):
         return "{0.type} {0.id}, '{0.description}'".format(self)
+
+    def finish(self, cursor):
+        finish_job(self.id)(cursor)
+
+    def fail(self, message):
+        return fail_job(self.id, message)
 
 
 class MinervaContext():
