@@ -27,5 +27,5 @@ setup(
     ],
     packages=["minerva_node_harvest"],
     package_dir={"": "src"},
-    entry_points={"node.plugins": ["harvest = harvest:HarvestPlugin"]}
+    entry_points={"node.plugins": ["harvest = minerva_node_harvest:HarvestPlugin"]}
 )
