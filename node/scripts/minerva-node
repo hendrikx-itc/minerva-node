@@ -211,26 +211,22 @@ def safe_commit(conn):
         logging.info(str(exc))
 
 
-def finish_job(conn, job_id):
+def finish_job(conn, job):
     try:
-        jobqueue.finish_job(conn, job_id)
+        with closing(conn.cursor()) as cursor:
+            job.finish_job(cursor)
         conn.commit()
     except Exception as exc:
         logging.error(exc)
-        return False
-    else:
-        return True
 
 
-def fail_job(conn, job_id, message):
+def fail_job(conn, job, message):
     try:
-        jobqueue.fail_job(conn, job_id, message)
+        with closing(conn.cursor()) as cursor:
+            job.fail_job(message)(cursor)
         conn.commit()
     except Exception as exc:
         logging.error(exc)
-        return False
-    else:
-        return True
 
 
 def process_job(conn, job):
@@ -240,20 +236,20 @@ def process_job(conn, job):
         safe_rollback(conn)
         logging.error(exc)
         message = str(exc)
-        fail_job(conn, job.id, message)
+        fail_job(conn, job, message)
     except NodeError as exc:
         safe_rollback(conn)
         logging.error(exc)
         message = str(exc)
-        fail_job(conn, job.id, message)
+        fail_job(conn, job, message)
     except Exception:
         safe_rollback(conn)
         message = traceback.format_exc()
         logging.error(message)
-        fail_job(conn, job.id, message)
+        fail_job(conn, job, message)
     else:
         logging.info("finished job {} {}".format(job.id, job))
-        finish_job(conn, job.id)
+        finish_job(conn, job)
 
 
 def create_job(plugin_dict, job):
