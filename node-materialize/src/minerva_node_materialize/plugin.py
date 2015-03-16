@@ -16,8 +16,8 @@ class MaterializePlugin(object):
     name = "materialize"
     description = "a materialization plugin"
 
-    def __init__(self, minerva_context):
-        self.minerva_context = minerva_context
+    def __init__(self, conn):
+        self.conn = conn
 
     def create_job(self, id, description, config):
-        return MaterializeJob(self.minerva_context, id, description)
+        return MaterializeJob(self.conn, id, description)

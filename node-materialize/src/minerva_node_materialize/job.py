@@ -24,8 +24,8 @@ from minerva_materialize.types import Materialization
 
 
 class MaterializeJob(object):
-    def __init__(self, minerva_context, id, description):
-        self.minerva_context = minerva_context
+    def __init__(self, conn, id, description):
+        self.conn = conn
         self.id = id
         self.description = description
 
@@ -48,7 +48,7 @@ class MaterializeJob(object):
     def execute(self):
         load = Materialization.load_by_id(self.type_id)
 
-        with closing(self.minerva_context.writer_conn.cursor()) as cursor:
+        with closing(self.conn.cursor()) as cursor:
             materialization = load(cursor)
 
             chunk = materialization.chunk(self.timestamp)
@@ -61,4 +61,4 @@ class MaterializeJob(object):
                 materialization.id, row_count, processed_max_modified,
                 self.timestamp.isoformat()))
 
-        self.minerva_context.writer_conn.commit()
+        self.conn.commit()

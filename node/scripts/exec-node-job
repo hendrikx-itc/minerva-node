@@ -75,28 +75,17 @@ def main():
     setup_logging(logging.DEBUG)
 
     if args.debug:
-        writer_db_logger = logging.getLogger("writer_db")
-        reader_db_logger = logging.getLogger("reader_db")
+        db_logger = logging.getLogger("db")
     else:
-        writer_db_logger = None
-        reader_db_logger = None
+        db_logger = None
 
-    create_writer_connection = partial(connect, config["writer_db_url"], writer_db_logger)
-    create_reader_connection = partial(connect, config["reader_db_url"], reader_db_logger)
+    conn = connect(config["writer_db_url"], db_logger)
 
-    writer_conn = create_writer_connection()
-    reader_conn = create_reader_connection()
+    if conn:
+        safe_db_url = extract_safe_url(config["writer_db_url"])
+        logging.info("connected to Minerva database {0}".format(safe_db_url))
 
-    if writer_conn and reader_conn:
-        safe_writer_url = extract_safe_url(config["writer_db_url"])
-        logging.info("connected to Minerva database {0} for writing".format(safe_writer_url))
-
-        safe_reader_url = extract_safe_url(config["reader_db_url"])
-        logging.info("connected to Minerva database {0} for reading".format(safe_reader_url))
-
-        minerva_context = MinervaContext(writer_conn, reader_conn)
-
-        plugins = [p(minerva_context) for p in load_plugins()]
+        plugins = [p(conn) for p in load_plugins()]
 
         for plugin in plugins:
             logging.info("loaded plugin '{}'".format(plugin.name))
@@ -104,7 +93,7 @@ def main():
         plugin_dict = dict((p.name, p) for p in plugins)
 
         if args.job_id:
-            with closing(reader_conn.cursor()) as cursor:
+            with closing(conn.cursor()) as cursor:
                 job = get_job_by_id(cursor, plugin_dict, args.job_id)
 
                 if job is None:

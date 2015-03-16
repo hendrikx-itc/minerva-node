@@ -39,10 +39,10 @@ class HarvestPlugin(NodePlugin):
     name = "harvest"
     description = "a harvesting plugin"
 
-    def __init__(self, minerva_context):
-        self.minerva_context = minerva_context
+    def __init__(self, conn):
+        self.conn = conn
         self.plugins = load_plugins()
-        self.existence = Existence(minerva_context.writer_conn)
+        self.existence = Existence(conn)
 
     def create_job(self, id_, description, config):
         """
@@ -62,17 +62,17 @@ class HarvestPlugin(NodePlugin):
             }
         """
         return HarvestJob(
-            id_, self.plugins, self.existence, self.minerva_context, description
+            id_, self.plugins, self.existence, self.conn, description
         )
 
 
 class HarvestJob(Job):
-    def __init__(self, id_, plugins, existence, minerva_context, description):
+    def __init__(self, id_, plugins, existence, conn, description):
         super().__init__('harvest', id_, description)
         self.id = id_
         self.plugins = plugins
         self.existence = existence
-        self.minerva_context = minerva_context
+        self.conn = conn
         self.description = description
 
     def __str__(self):
@@ -81,7 +81,7 @@ class HarvestJob(Job):
     def execute(self):
         data_source_name = self.description["data_source"]
 
-        with closing(self.minerva_context.writer_conn.cursor()) as cursor:
+        with closing(self.conn.cursor()) as cursor:
             data_source = DataSource.get_by_name(data_source_name)(cursor)
 
             if data_source is None:
@@ -114,7 +114,7 @@ class HarvestJob(Job):
         try:
             for store_cmd in map(parser.store_command(), parser.packages(data_stream, os.path.basename(uri))):
                 store_cmd(data_source)(
-                    self.minerva_context.writer_conn
+                    self.conn
                 )
         except Exception:
             stack_trace = traceback.format_exc()

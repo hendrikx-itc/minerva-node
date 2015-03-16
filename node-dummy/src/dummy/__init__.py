@@ -18,8 +18,8 @@ class DummyPlugin(object):
     name = "dummy"
     description = "dummy plugin for testing purposes"
 
-    def __init__(self, minerva_context):
-        self.minerva_context = minerva_context
+    def __init__(self, conn):
+        self.conn = conn
 
     def create_job(self, id, description, config):
         return DummyJob(id, description)

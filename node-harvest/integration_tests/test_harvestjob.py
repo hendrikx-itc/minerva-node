@@ -23,18 +23,16 @@ from minerva_node import MinervaContext
 from psycopg2 import connect
 
 
-class DummyParser(object):
+class DummyParser():
     @staticmethod
-    def parse(data, file_name):
+    def parse(stream, file_name):
         return tuple()
 
 
-class IntegerParser(object):
-    EXPECTED_VALUE = 42
-
+class IntegerParser():
     @staticmethod
-    def parse(data, file_name):
-        line = data.readline()
+    def parse(stream, file_name):
+        line = stream.readline()
 
         yield TrendEngine.store(
             DefaultPackage(
@@ -55,10 +53,6 @@ test_parsers = {
 
 
 class TestPlugin(HarvestPlugin):
-    @staticmethod
-    def storage_type():
-        return 'trend'
-
     @staticmethod
     def create_parser(config):
         return test_parsers[config['sub-type']]()
@@ -84,7 +78,7 @@ def test_execute():
                 'test-data': TestPlugin()
             },
             existence=Existence(conn),
-            minerva_context=MinervaContext(conn, conn),
+            conn=conn,
             description={
                 "data_type": "test-data",
                 "on_success": [
@@ -106,9 +100,10 @@ def test_execute():
 
 def test_execute_gzipped():
     file_path = '/tmp/data.csv.gz'
+    value = 42
 
     with gzip.open(file_path, 'wt') as test_file:
-        test_file.write('{}\n'.format(IntegerParser.EXPECTED_VALUE))
+        test_file.write('{}\n'.format(value))
 
     with closing(connect('')) as conn:
         clear_database(conn)
@@ -140,7 +135,7 @@ def test_execute_gzipped():
                 'test-data': TestPlugin()
             },
             existence=Existence(conn),
-            minerva_context=MinervaContext(conn, conn),
+            conn=conn,
             description={
                 "data_type": "test-data",
                 "on_success": [

@@ -6,14 +6,13 @@ Minerva Node command line script
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2008-2013 Hendrikx-ITC B.V.
+Copyright (C) 2008-2015 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
 version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
-import os
 import sys
 import argparse
 import logging
@@ -30,12 +29,11 @@ import psycopg2
 
 from minerva.util import iter_queue, after, each, compose, retry_while
 from minerva.system import jobqueue
-from minerva.instance import MinervaInstance
+from minerva.instance import connect
 
 from minerva_node.plugins import load_plugins
 from minerva_node.error import NodeError, JobError
-from minerva_node import Job, MinervaContext, log, version
-from minerva_node.config import load_config, get_defaults, ConfigError
+from minerva_node import Job, version
 
 
 SIGNAL_MAP = {
@@ -60,50 +58,14 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-c", "--configfile", dest="configfile",
-        default="/etc/minerva/node.conf", help="the path to the config file"
-    )
-
-    parser.add_argument(
-        "-i", "--instance", help="name of the target minerva instance"
-    )
-
-    parser.add_argument("-u", "--user", help="user to connect to database")
-
-    parser.add_argument(
         "--list-plugins", action=ListPluginsAction,
         nargs=0, help="list installed plugins"
-    )
-
-    parser.add_argument(
-        "--generate-configfile", action=GenerateConfigFileAction,
-        nargs=0, help="generate base config file"
-    )
-
-    parser.add_argument(
-        "--slot", dest="slot", default=1, type=int, help="node slot number"
     )
 
     parser.add_argument(
         "-v", "--version", action="version",
         version="%(prog)s {}".format(version.__version__)
     )
-
-    args = parser.parse_args()
-
-    minerva_instance_name = (
-        args.instance or
-        os.environ.get("DEFAULT_MINERVA_INSTANCE") or
-        "default"
-    )
-
-    minerva_instance = MinervaInstance.load(minerva_instance_name)
-
-    try:
-        config = load_config(get_defaults("node.conf"), args.configfile)
-    except ConfigError as exc:
-        print("error loading configuration: {}".format(exc))
-        return 1
 
     stop_event = threading.Event()
 
@@ -113,29 +75,20 @@ def main():
     signal.signal(signal.SIGINT, stop_node)
     signal.signal(signal.SIGHUP, stop_node)
 
-    user = args.user or config["database"]["user"] or "minerva_admin"
-
-    create_writer_connection = partial(minerva_instance.connect, user=user)
-    create_reader_connection = partial(minerva_instance.connect_ro, user=user)
-
     handler_map = {
-            psycopg2.OperationalError: lambda exc: logging.error("could not connect to database({}), waiting".format(exc))
+        psycopg2.OperationalError: lambda exc: logging.error(
+            "could not connect to database({}), waiting".format(exc)
+        )
     }
 
     retry_condition = compose(not_, stop_event.is_set)
 
-    writer_conn = retry_while(
-        create_writer_connection, handler_map, retry_condition
+    conn = retry_while(
+        connect, handler_map, retry_condition
     )
 
-    reader_conn = retry_while(
-        create_reader_connection, handler_map, retry_condition
-    )
-
-    if writer_conn and reader_conn:
-        minerva_context = MinervaContext(writer_conn, reader_conn)
-
-        node = setup_node(stop_event, minerva_context)
+    if conn:
+        node = setup_node(stop_event, conn)
 
         node.start()
 
@@ -153,22 +106,22 @@ def log_signal(signum, _frame):
     )
 
 
-def setup_node(stop_event, minerva_context):
+def setup_node(stop_event, conn):
     plugins = load_plugins()
 
     for plugin in plugins:
         logging.info("loaded plugin '{}'".format(plugin.name))
 
-    plugin_dict = dict((p.name, p(minerva_context)) for p in plugins)
+    plugin_dict = dict((p.name, p(conn)) for p in plugins)
 
     job_producer = iter_queue(
-        stop_event, partial(get_job, minerva_context.writer_conn),
+        stop_event, partial(get_job, conn),
         jobqueue.NoJobAvailable, NO_JOB_TIMEOUT
     )
 
     jobs = map(partial(create_job, plugin_dict), job_producer)
 
-    process = partial(process_job, minerva_context.writer_conn)
+    process = partial(process_job, conn)
 
     consume_jobs = partial(each, process)
 
@@ -259,13 +212,6 @@ def create_job(plugin_dict, job):
         return Job(job_type, job_id, job_description)
     else:
         return plugin.create_job(job_id, job_description, config)
-
-
-class GenerateConfigFileAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        sys.stdout.write(get_defaults("node.conf"))
-
-        sys.exit(0)
 
 
 class ListPluginsAction(argparse.Action):

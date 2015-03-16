@@ -40,14 +40,3 @@ class Job():
 
     def fail(self, message):
         return fail_job(self.id, message)
-
-
-class MinervaContext():
-    """
-    Maintains a Minerva context, including things like a connection to the
-    writable Minerva database, a connection to the readable Minerva database and
-    current Minerva process Id.
-    """
-    def __init__(self, writer_conn, reader_conn):
-        self.writer_conn = writer_conn
-        self.reader_conn = reader_conn
