@@ -6,7 +6,7 @@ Minerva Dispatcher job sweep command line script
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2013 Hendrikx-ITC B.V.
+Copyright (C) 2015 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -14,7 +14,6 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import os
-import sys
 import datetime
 import argparse
 import logging.handlers
@@ -24,9 +23,8 @@ import json
 from functools import partial
 
 from minerva.util import first
-from minerva.util.config import load_config, get_defaults, ConfigError
-from minerva.system.jobqueue import enqueue_job
-from minerva.instance import MinervaInstance
+from minerva.system.job import Job
+from minerva.instance import connect
 
 from minerva_dispatcher import version, JOB_TYPE, get_job_sources
 
@@ -41,40 +39,29 @@ def main():
     """
     Script entry point
     """
-    config_file_path = os.path.join("/etc/minerva", config_file)
-
     parser = argparse.ArgumentParser(
-        description="sweep job sources for existing files/jobs")
+        description="sweep job sources for existing files/jobs"
+    )
 
     parser.add_argument(
         "-v", "--version", action="version",
-        version="%(prog)s {}".format(version.__version__))
-
-    parser.add_argument(
-        "-i", "--instance", help="name of the target minerva instance")
-
-    parser.add_argument("-u", "--user", help="user to connect to database")
-
-    parser.add_argument(
-        "-c", "--configfile", dest="configfile",
-        default=config_file_path, help="the path to the config file")
+        version="%(prog)s {}".format(version.__version__)
+    )
 
     parser.add_argument(
         "--when-queue-empty", action="store_true",
-        help="only run when the job queue is empty")
-
-    parser.add_argument(
-        "--generate-configfile", dest="generate_configfile",
-        action=GenerateConfigFileAction, nargs=0,
-        help="generate base config file")
+        help="only run when the job queue is empty"
+    )
 
     parser.add_argument(
         "--verbose", action="store_true", default=False,
-        help="show verbose output")
+        help="show verbose output"
+    )
 
     parser.add_argument(
         "--debug", action="store_true", default=False,
-        help="show debug output")
+        help="show debug output"
+    )
 
     args = parser.parse_args()
 
@@ -86,24 +73,7 @@ def main():
     if args.debug:
         logging.root.setLevel(logging.DEBUG)
 
-    minerva_instance_name = (
-        args.instance or
-        os.environ.get("MINERVA_INSTANCE") or
-        "default"
-    )
-
-    minerva_instance = MinervaInstance.load(minerva_instance_name)
-
-    try:
-        config = load_config(get_defaults(package_name, config_file),
-                             args.configfile)
-    except ConfigError as exc:
-        print("error loading configuration: {}".format(exc))
-        return 1
-
-    user = args.user or config["database"]["user"] or "minerva_admin"
-
-    with closing(minerva_instance.connect(user=user)) as conn:
+    with closing(connect()) as conn:
         with closing(conn.cursor()) as cursor:
             job_sources = get_job_sources(cursor)
 
@@ -140,8 +110,11 @@ def sweep(job_sources):
             job_source.name, uri, match_pattern))
 
         if recursive:
-            paths = (os.path.join(root, f) for root, _, files in os.walk(uri)
-                     for f in files if regex.match(f))
+            paths = (
+                os.path.join(root, f)
+                for root, _, files in os.walk(uri)
+                for f in files if regex.match(f)
+            )
         else:
             make_full_path = partial(os.path.join, uri)
 
@@ -173,23 +146,19 @@ def process(conn, job_source_id, job_description):
     path = job_description["uri"]
 
     try:
-        filesize = os.path.getsize(path)
+        file_size = os.path.getsize(path)
     except OSError as exc:
         logging.info("could not get size of file: {}".format(exc))
         return
 
-    enqueue_job(conn, JOB_TYPE, json.dumps(job_description), filesize,
-                job_source_id)
+    with closing(conn.cursor()) as cursor:
+        Job.create(
+            JOB_TYPE, json.dumps(job_description), file_size, job_source_id
+        )(cursor)
 
     conn.commit()
 
-    logging.info("enqueued {}".format(path))
-
-
-class GenerateConfigFileAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        sys.stdout.write(get_defaults(package_name, config_file))
-        sys.exit(0)
+    logging.info("queued {}".format(path))
 
 
 if __name__ == "__main__":

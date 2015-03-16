@@ -25,7 +25,7 @@ class HarvestJobSource(JobSource):
 
     def create_job(self, file_path):
         try:
-            filesize = os.path.getsize(file_path)
+            file_size = os.path.getsize(file_path)
         except OSError as exc:
             raise Exception("could not get size of file: {}".format(exc))
 
@@ -34,5 +34,5 @@ class HarvestJobSource(JobSource):
             job_source_id=self.id,
             type=JOB_TYPE,
             description=self.job_description(file_path),
-            size=filesize
+            size=file_size
         )

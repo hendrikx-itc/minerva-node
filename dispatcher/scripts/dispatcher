@@ -16,7 +16,7 @@ Dispatcher/harvest job sources look like this:
 __docformat__ = "restructuredtext en"
 
 __copyright__ = """
-Copyright (C) 2008, 2013 Hendrikx-ITC B.V.
+Copyright (C) 2008, 2015 Hendrikx-ITC B.V.
 
 Distributed under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 3, or (at your option) any later
@@ -24,10 +24,8 @@ version.  The full license is in the file COPYING, distributed as part of
 this software.
 """
 import os
-import sys
 import argparse
 import logging.handlers
-from logging.handlers import RotatingFileHandler
 import signal
 from contextlib import closing
 from functools import partial
@@ -37,11 +35,8 @@ from operator import not_
 
 import psycopg2.extensions
 
-from minerva.util import each, compose, \
-    no_op, after, retry_while
-from minerva.util.config import parse_size, load_config, get_defaults, \
-    ConfigError
-from minerva.instance import MinervaInstance
+from minerva.util import compose, no_op, after, retry_while
+from minerva.instance import connect
 
 from minerva_dispatcher.version import __version__ as version
 from minerva_dispatcher import JobCollector, get_job_sources
@@ -60,46 +55,12 @@ config_file = "{}.conf".format(script_name)
 
 def main():
     """Script entry point."""
-    config_file_path = os.path.join("/etc/minerva", config_file)
-
     parser = argparse.ArgumentParser(
         description="watch job sources for new files/jobs")
 
     parser.add_argument(
         "--version", action="version", version='%(prog)s {}'.format(version),
         help="display version information and exit")
-
-    parser.add_argument(
-        "-i", "--instance",
-        help="name of the target minerva instance")
-
-    parser.add_argument("-u", "--user", help="user to connect to database")
-
-    parser.add_argument(
-        "-c", "--configfile", dest="configfile",
-        default=config_file_path, help="the path to the config file")
-
-    parser.add_argument(
-        "--generate-configfile", dest="generate_configfile",
-        action=GenerateConfigFileAction, nargs=0,
-        help="generate base config file")
-
-    args = parser.parse_args()
-
-    minerva_instance_name = (
-        args.instance or
-        os.environ.get("MINERVA_INSTANCE") or
-        "default"
-    )
-
-    minerva_instance = MinervaInstance.load(minerva_instance_name)
-
-    try:
-        config = load_config(get_defaults(package_name, config_file),
-                             args.configfile)
-    except ConfigError as exc:
-        print("error loading configuration: {}".format(exc))
-        return 1
 
     stop_event = threading.Event()
 
@@ -108,41 +69,32 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    try:
-        setup_logging(config["log_directory"], config["log_filename"],
-                      config["log_rotation_size"], config["log_level"])
-    except IOError as exc:
-        print(exc)
-        return 1
-
-    user = args.user or config['database']['user'] or "minerva_admin"
-
-    def connect():
+    def connect_retry():
         while not stop_event.is_set():
             try:
-                return minerva_instance.connect(user=user)
+                return connect()
             except Exception as exc:
                 logging.error(exc)
                 stop_event.wait(1.0)
 
-    with closing(connect()) as conn:
+    with closing(connect_retry()) as conn:
         with closing(conn.cursor()) as cursor:
             job_sources = get_job_sources(cursor)
 
         conn.commit()
 
-        jobcollector = JobCollector(job_sources, stop_event)
-        jobcollector.start()
+        job_collector = JobCollector(job_sources, stop_event)
+        job_collector.start()
 
         logging.info("started with pid {0:d}".format(os.getpid()))
 
-        for job in jobcollector.iter_jobs():
+        for job in job_collector.iter_jobs():
             store_job(conn, stop_event, job)
 
         logging.info("loop terminated")
 
-        jobcollector.stop()
-        jobcollector.join()
+        job_collector.stop()
+        job_collector.join()
         logging.info("collector stopped")
 
         conn.commit()
@@ -167,43 +119,14 @@ def store_job(conn, stop_event, job):
 # next time an OperationalError
 EXCEPTION_HANDLER_MAP = {
     psycopg2.InterfaceError: no_op,
-    psycopg2.OperationalError: no_op}
+    psycopg2.OperationalError: no_op
+}
 
 
 def resilient_db_exec(action, stop_event):
     condition = compose(not_, stop_event.is_set)
 
     retry_while(action, EXCEPTION_HANDLER_MAP, condition)
-
-
-def setup_logging(directory, filename, rotation_size, level):
-    """Setup logging with rotating log files."""
-    level_map = {
-        "DEBUG": logging.DEBUG,
-        "INFO": logging.INFO,
-        "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL}
-
-    max_log_size = parse_size(rotation_size)
-
-    filepath = os.path.join(directory, filename)
-    handler = RotatingFileHandler(filepath, maxBytes=max_log_size,
-                                  backupCount=5)
-    handler.setLevel(level_map[level])
-
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    handler.setFormatter(formatter)
-
-    rootlogger = logging.getLogger("")
-    rootlogger.setLevel(level_map[level])
-    rootlogger.addHandler(handler)
-
-
-class GenerateConfigFileAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        sys.stdout.write(get_defaults(package_name, config_file))
-        sys.exit(0)
 
 
 def log_signal(signum, _frame):

@@ -22,14 +22,17 @@ from minerva.system.helpers import PREPARED_STATEMENTS
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Place a file in the job queue')
+    parser = argparse.ArgumentParser(
+        description='Place a file in the job queue'
+    )
 
-    parser.add_argument("-c", "--configfile", dest="configfile",
-        help="the path to the config file", default="/etc/minerva/enqueue_job.conf")
-    parser.add_argument("-d", "--datasource", dest="datasource",
-        help="datasource of file", default="enqueue_job")
-    parser.add_argument('file', metavar='FILE', type=str, nargs='+',
-        help='file to enqueue')
+    parser.add_argument(
+        "-d", "--data-source", help="data source of file", default="enqueue_job"
+    )
+
+    parser.add_argument(
+        'file', metavar='FILE', type=str, nargs='+', help='file to enqueue'
+    )
 
     args = parser.parse_args()
 
@@ -40,24 +43,20 @@ def main():
             for stmt in PREPARED_STATEMENTS:
                 cursor.execute("PREPARE {}".format(stmt))
 
-            query = "SELECT id FROM system.datasource WHERE name = %s"
+            query = "SELECT id FROM directory.data_source WHERE name = %s"
             query_args = (args.datasource, )
             cursor.execute(query, query_args)
 
             if cursor.rowcount == 0:
-                print("No such datasource '{}'".format(args.datasource))
+                print("No such data source '{}'".format(args.datasource))
                 return 1
 
-            datasource_id, = cursor.fetchone()
-
-            cursor.execute("SELECT id FROM system.process WHERE type = %s", ("enqueue_job", ))
-
-            process_id, = cursor.fetchone()
+            data_source_id, = cursor.fetchone()
 
         for path in args.file:
-            filesize = os.path.getsize(path)
+            file_size = os.path.getsize(path)
 
-            enqueue_job(conn, datasource_id, process_id, path, filesize);
+            enqueue_job(conn, data_source_id, path, file_size)
 
 
 if __name__ == "__main__":
