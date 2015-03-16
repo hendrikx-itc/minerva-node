@@ -13,7 +13,7 @@ this software.
 import os
 import logging
 import re
-import Queue
+import queue
 
 import pyinotify
 
@@ -45,7 +45,7 @@ class JobCollector(object):
         self.job_sources = job_sources
         self.stop_event = stop_event
         self.notifier = None
-        self.queue = Queue.Queue()
+        self.queue = queue.Queue()
         self.notifier = setup_notifier(self.job_sources, self.queue.put)
 
     def start(self):
@@ -62,7 +62,7 @@ class JobCollector(object):
 
     def iter_jobs(self):
         """Return iterator over the job queue."""
-        return iter_queue(self.stop_event, self.queue.get_nowait, Queue.Empty,
+        return iter_queue(self.stop_event, self.queue.get_nowait, queue.Empty,
                           TIMEOUT)
 
 
