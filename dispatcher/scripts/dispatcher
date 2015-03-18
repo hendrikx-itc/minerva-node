@@ -37,6 +37,7 @@ import psycopg2.extensions
 
 from minerva.util import compose, no_op, after, retry_while
 from minerva.instance import connect
+from minerva.system.job import Job
 
 from minerva_dispatcher.version import __version__ as version
 from minerva_dispatcher import JobCollector, get_job_sources
@@ -88,8 +89,8 @@ def main():
 
         logging.info("started with pid {0:d}".format(os.getpid()))
 
-        for job in job_collector.iter_jobs():
-            store_job(conn, stop_event, job)
+        for job_descriptor in job_collector.iter_jobs():
+            store_job(conn, stop_event, job_descriptor)
 
         logging.info("loop terminated")
 
@@ -110,10 +111,10 @@ def on_connection(conn):
     return f
 
 
-def store_job(conn, stop_event, job):
+def store_job(conn, stop_event, job_descriptor):
     try:
         resilient_db_exec(
-            action=partial(on_connection(conn), job),
+            action=partial(on_connection(conn), Job.create(job_descriptor)),
             stop_event=stop_event
         )
     except:
@@ -121,7 +122,7 @@ def store_job(conn, stop_event, job):
         conn.rollback()
     else:
         conn.commit()
-        logging.info("enqueued {}".format(job.description["uri"]))
+        logging.info("enqueued {}".format(job_descriptor.description["uri"]))
 
 
 # In case of a database shutdown, we first get an InterfaceError and the
