@@ -102,11 +102,20 @@ def main():
         logging.info("stopped")
 
 
+def on_connection(conn):
+    def f(cmd):
+        with closing(conn.cursor()) as cursor:
+            cmd(cursor)
+
+    return f
+
+
 def store_job(conn, stop_event, job):
     try:
         resilient_db_exec(
-            action=partial(job.enqueue, conn),
-            stop_event=stop_event)
+            action=partial(on_connection(conn), job),
+            stop_event=stop_event
+        )
     except:
         logging.error(traceback.format_exc())
         conn.rollback()

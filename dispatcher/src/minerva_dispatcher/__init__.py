@@ -119,9 +119,9 @@ def watch_source(watch_manager, enqueue, job_source):
         if event_matches(event):
             file_path = os.path.join(event.path, event.name)
 
-            job = job_source.create_job(file_path)
-
-            enqueue(job)
+            enqueue(
+                job_source.create_job(file_path)
+            )
 
     proc_fun = event_handler({
         "IN_CLOSE_WRITE": handle_event,
