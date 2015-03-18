@@ -30,9 +30,9 @@ class HarvestJobSource(JobSource):
             raise Exception("could not get size of file: {}".format(exc))
 
         return Job(
-            id=None,
+            id_=None,
             job_source_id=self.id,
-            type=JOB_TYPE,
+            type_=JOB_TYPE,
             description=self.job_description(file_path),
             size=file_size
         )
