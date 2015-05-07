@@ -35,7 +35,7 @@ class TrendStorage(Storage):
         self.conn = None
 
         if self.timestamp_is_start:
-            self.offset = partial(offset_timestamp, timedelta(0, self.granularity))
+            self.offset = partial(offset_timestamp, timedelta(0, self.granularity.seconds))
         else:
             self.offset = identity
 
