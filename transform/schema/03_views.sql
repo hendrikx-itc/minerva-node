@@ -15,9 +15,10 @@ CREATE VIEW tagged_runnable_jobs AS
 		JOIN transform.function_set_tag_link fstl ON fstl.function_set_id = state.function_set_id
 		JOIN directory.tag t ON t.id = fstl.tag_id
 		JOIN transform.function_set fs ON fs.id = state.function_set_id
+	    LEFT JOIN system.job ON job.id = job_id
 		WHERE
 			(max_modified > processed_max_modified OR processed_max_modified IS NULL)
-			AND job_id IS NULL
+			AND job.id IS NULL
 			AND transform.runnable(fs.dest_granularity, dest_timestamp, max_modified)
 		ORDER BY fs.dest_granularity ASC, dest_timestamp DESC;
 
