@@ -152,7 +152,8 @@ def create_argument_parser():
         help="regular expression for timestamp extraction from filename")
 
     parser.add_argument(
-        "--timestamp-format", help="format of date: default: %%Y%%m%%d_%%H%%M")
+        "--timestamp-format", help="format of date: default: %%Y%%m%%d_%%H%%M",
+        default="%Y%m%d_%H%M")
 
     parser.add_argument(
         "--timestamp-column", help="column containing timestamps")
@@ -242,9 +243,9 @@ def update_profile_from_args(profile, args):
 
         # Except for the datasource, the configuration for different storage
         # types is completely different.
-        p_copy["storage"]["config"] = {
-            "datasource": p_copy["storage"]["config"]["datasource"]
-        }
+        # p_copy["storage"]["config"]
+        #     "datasource": p_copy["storage"]["config"]["datasource"]
+        # }
 
     if args.timestamp_is_start:
         if p_copy["storage"]["type"] != "trend":
@@ -255,6 +256,18 @@ def update_profile_from_args(profile, args):
         else:
             p_copy["storage"]["config"]["timestamp_is_start"] = True
 
+    if args.granularity:
+        if p_copy["storage"]["type"] != "trend":
+            raise ConfigurationError(
+                "Option granularity can only be used with storage "
+                "type trend"
+            )
+        else:
+            p_copy["storage"]["config"]["granularity"] = args.granularity
+
+    if args.timestamp_format:
+        p_copy["timestamp"]["config"]["format"] = args.timestamp_format
+
     if args.timestamp_column:
         p_copy["timestamp"]["type"] = "from_column"
         p_copy["timestamp"]["config"]["name"] = args.timestamp_column
@@ -264,10 +277,7 @@ def update_profile_from_args(profile, args):
             p_copy["timestamp"]["config"] = {}
         else:
             p_copy["timestamp"]["type"] = "fixed"
-            p_copy["timestamp"]["config"] = {"timestamp": args.timestamp, "format": "%Y%m%d_%H%M"}
-
-    if args.timestamp_format:
-        p_copy["timestamp"]["config"]["format"] = args.timestamp_format
+            p_copy["timestamp"]["config"] = {"timestamp": args.timestamp, "format": p_copy["timestamp"]["config"]["format"]}
 
     return p_copy
 
