@@ -28,7 +28,7 @@ from minerva.storage.notification.entityref import EntityDnRef
 
 
 class TrendStorage(Storage):
-    def __init__(self, datasource, granularity, timestamp_is_start):
+    def __init__(self, datasource, granularity, timestamp_is_start=False):
         self.datasource = datasource
         self.granularity = create_granularity(granularity)
         self.timestamp_is_start = timestamp_is_start
