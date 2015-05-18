@@ -31,8 +31,13 @@ class AttributeStorage(Storage):
         return "attribute()"
 
     def store(self, column_names, fields, raw_data_rows):
+
         rows = list(raw_data_rows)
+
         raw_datapackage = RawDataPackage(column_names, rows)
+
+        print ("{}".format(raw_datapackage))
+
         attributes = raw_datapackage.deduce_attributes()
 
         entity_ref = EntityDnRef(rows[0][0])
