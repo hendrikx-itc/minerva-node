@@ -90,7 +90,7 @@ def load_csv(profile, csv_file):
         (
             dict(zip(header, [item.decode('utf-8') for item in row]))
             for line_nr, row in enumerate(csv_reader)
-            if include_row(line_nr, row)
+            if profile.ignore_field_mismatches or include_row(line_nr, row)
         )
     )
 
