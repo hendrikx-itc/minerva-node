@@ -48,7 +48,6 @@ def type_mapping(schema):
 
 
 def to_storage(s):
-    print("CONFIG: {}".format(s))
     return storage.type_map[s["type"]](**s.get("config", {}))
 
 
