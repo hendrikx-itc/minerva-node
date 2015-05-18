@@ -36,8 +36,6 @@ class AttributeStorage(Storage):
 
         raw_datapackage = RawDataPackage(column_names, rows)
 
-        print ("{}".format(raw_datapackage))
-
         attributes = raw_datapackage.deduce_attributes()
 
         entity_ref = EntityDnRef(rows[0][0])
