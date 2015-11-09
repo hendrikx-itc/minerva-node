@@ -16,61 +16,11 @@ from minerva.storage.trend.trendstore import TrendStore
 
 
 class Materialization(object):
-    def __init__(self, src_trendstore, dst_trendstore, enabled=False):
-        self.id = None
-        self.src_trendstore = src_trendstore
-        self.dst_trendstore = dst_trendstore
+    def __init__(self, id):
+        self.id = id
 
     def chunk(self, timestamp):
         return MaterializationChunk(self, timestamp)
-
-    def __str__(self):
-        return "{}->{}".format(self.src_trendstore, self.dst_trendstore)
-
-    @staticmethod
-    def define_from_view(view):
-        def f(cursor):
-            query = (
-                "SELECT (m.new).* "
-                "FROM (SELECT materialization.define(view) AS new "
-                "FROM trend.view "
-                "WHERE id = %s) as m")
-
-            args = view.id,
-
-            cursor.execute(query, args)
-
-            return Materialization.from_row(*cursor.fetchone())(cursor)
-
-        return f
-
-    @staticmethod
-    def load_by_id(id):
-        args = id,
-        query = (
-            "SELECT id, src_trendstore_id, dst_trendstore_id, enabled "
-            "FROM materialization.type "
-            "WHERE id = %s")
-
-        def f(cursor):
-            cursor.execute(query, args)
-
-            return Materialization.from_row(*cursor.fetchone())(cursor)
-
-        return f
-
-    @staticmethod
-    def from_row(id, src_trendstore_id, dst_trendstore_id, enabled):
-        def f(cursor):
-            src_trendstore = TrendStore.get_by_id(cursor, src_trendstore_id)
-            dst_trendstore = TrendStore.get_by_id(cursor, dst_trendstore_id)
-
-            materialization = Materialization(src_trendstore, dst_trendstore,
-                                              enabled)
-            materialization.id = id
-            return materialization
-
-        return f
 
 
 class MaterializationChunk(object):
@@ -79,8 +29,7 @@ class MaterializationChunk(object):
         self.timestamp = timestamp
 
     def execute(self, cursor):
-        args = (self.type.src_trendstore.id,
-                self.type.dst_trendstore.id, self.timestamp)
+        args = (self.type.id, self.timestamp)
 
         try:
             cursor.callproc("materialization.materialize", args)
@@ -109,3 +58,4 @@ def update_processed_max_modified(cursor, type_id, timestamp,
                 processed_max_modified)
 
         cursor.execute(query, args)
+
