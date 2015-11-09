@@ -15,7 +15,6 @@ import sys
 import logging
 import json
 import argparse
-from configobj import ConfigObj
 from contextlib import closing, contextmanager
 from functools import partial
 from operator import itemgetter
@@ -23,7 +22,6 @@ import re
 
 from minerva.util import compose, expand_args, unlines, k, \
     make_tuple
-from minerva.util.config import get_defaults
 from minerva.util.tabulate import render_table
 from minerva.instance import MinervaInstance
 from minerva.directory.helpers_v4 import name_to_datasource
@@ -35,11 +33,11 @@ from minerva_harvesting.fileprocessor import process_file
 from minerva_harvesting.plugins import iter_entry_points, \
     get_plugin as get_harvest_plugin
 
+import psycopg2
+
 
 package_name = "minerva_harvesting"
 script_name = os.path.basename(__file__)
-config_file = "{}.conf".format(script_name)
-configfile_path = os.path.join("/etc/minerva/", config_file)
 
 package_constructors = {
     "trend": minerva.storage.trend.rawdatapackage.RawDataPackage,
@@ -81,22 +79,11 @@ def main():
                                  handle_package)
 
     if args.store:
-        minerva_instance = MinervaInstance.load(args.instance_name)
-
-        logging.debug("Minerva instance: {}".format(minerva_instance))
-
-        user = (
-            args.user
-            or args.config.get("database", {}).get("user")
-            or "minerva_admin"
-        )
-
-        logging.debug("database user: {}".format(user))
         logging.debug("storage type: {}".format(args.plugin.storagetype()))
 
-        storage_provider = partial(store_database, minerva_instance, user,
-                                   args.plugin.storagetype(),
-                                   args.datasource)
+        storage_provider = partial(
+            store_database, args.plugin.storagetype(), args.datasource
+        )
     else:
         storage_provider = store_dummy
 
@@ -133,8 +120,6 @@ def create_argparser():
         "-i", "--instance", dest="instance_name", default=instance_name,
         help="name of the minerva instance")
 
-    parser.add_argument("-u", "--user", help="user to connect to database")
-
     parser.add_argument(
         "-p", "--plugin", action=_LoadHarvestPlugin,
         help="harvester plug-in to use for processing file(s)")
@@ -142,11 +127,6 @@ def create_argparser():
     parser.add_argument(
         "-l", "--list-plugins", action=_ListPlugins,
         help="list installed Harvester plug-ins")
-
-    parser.add_argument(
-        "-c", "--configfile", action=_LoadConfig,
-        default=load_default_config(),
-        dest="config", help="path to config file")
 
     parser.add_argument(
         "--parser-config", default="{}", type=json.loads,
@@ -173,10 +153,6 @@ def create_argparser():
 
     parser.add_argument("--column-filter", type=create_regex_filter,
                         default=k(True), help="filter by trend name")
-
-    parser.add_argument(
-        "--generate-configfile", action=GenerateConfigFileAction,
-        help="generate default config file")
 
     parser.add_argument(
         "--datasource", dest="datasource", default="processfile",
@@ -312,16 +288,6 @@ package_renderers = {
 }
 
 
-def load_default_config():
-    return ConfigObj(get_defaults(package_name, config_file))
-
-
-class GenerateConfigFileAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        sys.stdout.write(get_defaults(package_name, config_file))
-        sys.exit(0)
-
-
 class _ListPlugins(argparse.Action):
     def __init__(self, option_strings, dest=argparse.SUPPRESS,
                  default=argparse.SUPPRESS, help=None):
@@ -334,27 +300,6 @@ class _ListPlugins(argparse.Action):
             print(entrypoint.name)
 
         sys.exit(0)
-
-
-class _LoadConfig(argparse.Action):
-    def __init__(self, option_strings, dest=argparse.SUPPRESS,
-                 default=argparse.SUPPRESS, help=None,
-                 defaults_loader=load_default_config):
-        super(_LoadConfig, self).__init__(option_strings=option_strings,
-                                          dest=dest, default=default, nargs=1,
-                                          help=help)
-
-        self.load_default_config = load_default_config
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        file_path = values[0]
-
-        if not os.path.isfile(file_path):
-            print("Config file {0} could not be found.".format(
-                file_path))
-            sys.exit(1)
-
-        setattr(namespace, self.dest, ConfigObj(file_path))
 
 
 class _LoadHarvestPlugin(argparse.Action):
@@ -377,8 +322,8 @@ class _LoadHarvestPlugin(argparse.Action):
 
 
 @contextmanager
-def store_database(minerva_instance, user, storage_type, datasource_name):
-    with closing(minerva_instance.connect(user=user)) as conn:
+def store_database(storage_type, datasource_name):
+    with closing(psycopg2.connect('')) as conn:
         with closing(conn.cursor()) as cursor:
             datasource = name_to_datasource(cursor, datasource_name)
 

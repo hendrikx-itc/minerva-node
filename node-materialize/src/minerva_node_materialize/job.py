@@ -46,19 +46,20 @@ class MaterializeJob(object):
                 self.type_id, self.timestamp)
 
     def execute(self):
-        load = Materialization.load_by_id(self.type_id)
+        materialization = Materialization(self.type_id)
+
+        chunk = materialization.chunk(self.timestamp)
 
         with closing(self.minerva_context.writer_conn.cursor()) as cursor:
-            materialization = load(cursor)
+            row_count = chunk.execute(cursor)
 
-            chunk = materialization.chunk(self.timestamp)
+        msg_template = "{0} materialized {1} records for timestamp {2}"
 
-            processed_max_modified, row_count = chunk.execute(cursor)
-
-        msg_template = "'{0}'(id: {1}) materialized {2} records up to {3} for timestamp {4}"
-
-        logging.info(msg_template.format(materialization,
-                materialization.id, row_count, processed_max_modified,
-                self.timestamp.isoformat()))
+        logging.info(
+            msg_template.format(
+                materialization.id, row_count, self.timestamp.isoformat()
+            )
+        )
 
         self.minerva_context.writer_conn.commit()
+
