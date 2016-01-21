@@ -123,17 +123,19 @@ def watch_source(watch_manager, enqueue, job_source):
 
             enqueue(job)
 
-    proc_fun = event_handler({
-        "IN_CLOSE_WRITE": handle_event,
-        "IN_MOVED_TO": handle_event
-    })
+    try:
+        event_types = job_source.config["inotify_events"]
+    except KeyError:
+        event_types = ("IN_CLOSE_WRITE", "IN_MOVED_TO")
+
+    proc_fun = event_handler({event_type: handle_event for event_type in event_types})
 
     recursive = job_source.config["recursive"]
 
     watch_manager.add_watch(
         uri, EVENT_MASK, proc_fun=proc_fun, rec=recursive, auto_add=True)
 
-    logging.info("watching {} with filter {}".format(uri, match_pattern))
+    logging.info("watching {} with filter {} for events {}".format(uri, match_pattern, event_types))
 
 
 def event_handler(handler_map, default_handler=no_op):
