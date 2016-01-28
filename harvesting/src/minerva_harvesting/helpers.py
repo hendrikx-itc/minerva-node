@@ -19,7 +19,7 @@ def records_to_packages(records):
     return map(expand_args(package), grouped_by(records_with_key, first))
 
 
-class DataRecord():
+class DataRecord:
     def __init__(self, timestamp, dn, granularity, field_names, values):
         self.timestamp = timestamp
         self.dn = dn

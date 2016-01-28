@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
-class HarvestParser():
+class HarvestParser:
     @staticmethod
     def store_command():
         raise NotImplementedError()
@@ -18,7 +18,7 @@ class HarvestParser():
         raise NotImplementedError()
 
 
-class HarvestPlugin():
+class HarvestPlugin:
     @staticmethod
     def create_parser(config):
         """
