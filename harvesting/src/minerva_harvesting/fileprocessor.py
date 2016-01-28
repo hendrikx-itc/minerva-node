@@ -29,7 +29,7 @@ class ParseError(Exception):
 
 
 def process_file(
-        file_path, plugin, parser_config, handle_package, show_progress=False):
+        file_path, parser, handle_package, show_progress=False):
     """
     Process a single file with specified plugin.
     """
@@ -45,10 +45,9 @@ def process_file(
         if show_progress:
             start_progress_reporter(data_file, condition)
 
-        parser = plugin.create_parser(handle_package, parser_config)
-
         try:
-            parser.parse(data_file, filename)
+            for package in parser.packages(data_file, filename):
+                handle_package(package)
         except DataError as exc:
             raise ParseError("{0!s} at position {1:d}".format(
                 exc, data_file.tell()))

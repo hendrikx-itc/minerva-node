@@ -11,6 +11,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   minerva_harvesting/pluginapi
 
 
 Indices and tables
