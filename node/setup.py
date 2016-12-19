@@ -14,7 +14,7 @@ from setuptools import setup
 
 setup(
     name="minerva-node",
-    version="4.5.21",
+    version="4.5.29",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
     install_requires=["minerva>=4.5.3"],
