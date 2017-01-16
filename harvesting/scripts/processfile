@@ -238,7 +238,7 @@ def filter_attribute_package(entity_filter, attribute_filter, package):
 
         filtered_rows.append(attribute_filtered_row)
 
-    return minerva.storage.attribute.datapackage.DataPackage(
+    return type(package)(
         filtered_attribute_names,
         filtered_rows)
 
