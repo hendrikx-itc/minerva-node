@@ -17,6 +17,8 @@ import codecs
 import traceback
 import gzip
 
+import psycopg2
+
 from minerva.util import compose
 from minerva.directory.helpers import get_datasource, NoSuchDataSourceError
 from minerva.directory.distinguishedname import explode
@@ -118,6 +120,10 @@ class HarvestJob(object):
 
         try:
             parser.parse(datastream, os.path.basename(uri))
+        except psycopg2.InterfaceError as exc:
+            stacktrace = traceback.format_exc()
+
+            raise JobError(stacktrace)
         except Exception as exc:
             stacktrace = traceback.format_exc()
 
