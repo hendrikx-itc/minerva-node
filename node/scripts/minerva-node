@@ -179,7 +179,7 @@ def get_job(conn):
             job = jobqueue.get_job(cursor)
     except psycopg2.InterfaceError:
         logging.error(traceback.format_exc())
-        raise jobqueue.NoJobAvailable()
+        raise
     except Exception:
         logging.error(traceback.format_exc())
         safe_rollback(conn)
@@ -196,14 +196,14 @@ def get_job(conn):
 def safe_rollback(conn):
     try:
         conn.rollback()
-    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
+    except psycopg2.OperationalError as exc:
         logging.info(str(exc))
 
 
 def safe_commit(conn):
     try:
         conn.commit()
-    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
+    except psycopg2.OperationalError as exc:
         logging.info(str(exc))
 
 
