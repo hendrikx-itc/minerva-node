@@ -2,7 +2,7 @@ Source: minerva-dispatcher
 Section: contrib/misc
 Priority: extra
 Maintainer: Alfred Blokland <a.j.n.blokland@hendrikx-itc.nl>
-Build-Depends: debhelper (>= 7)
+Build-Depends: debhelper (>= 7), dh-python
 Standards-Version: 3.8.3
 Homepage: http://hendrikx-itc.nl
 
