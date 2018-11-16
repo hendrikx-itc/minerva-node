@@ -12,14 +12,17 @@ node ('git') {
             sh "rm -rf ${buildDir}"
             sh "mkdir -p ${buildDir}"
 
-            // Credentials used should be stored in Jenkins under the name 'hitc-docker-registry'
+            dir ('dispatcher/debian') {
+                sh './make-changelog'
+            }
+
             docker.withRegistry("https://${docker_registry}", 'hitc-docker-registry') {
                 docker.image('ubuntu-1604-packaging').inside("-v ${workspace}/dispatcher:/package/source -v ${workspace}/${buildDir}:/package/build") {
                     sh 'package'
                 }
             }
 
-            publishPackages buildDir.toString(), 'kpn/stable', 'xenial'
+            publishPackages buildDir.toString(), 'common/stable', 'xenial'
 
             archiveArtifacts(artifacts: "${buildDir}/*")
         }
