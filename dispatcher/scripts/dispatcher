@@ -34,6 +34,7 @@ from functools import partial
 import traceback
 import threading
 from operator import not_
+import json
 
 import psycopg2.extensions
 

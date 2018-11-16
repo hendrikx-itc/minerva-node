@@ -6,7 +6,7 @@ node ('git') {
     stage ('build') {
         // Report status of stage 'build' back to Gitlab
         gitlabCommitStatus(name: 'build') {
-            def buildDir = 'pkg-build'
+            def buildDir = 'dispatcher/pkg-build'
 
             // Clean the build directory before starting
             sh "rm -rf ${buildDir}"
@@ -14,7 +14,7 @@ node ('git') {
 
             // Credentials used should be stored in Jenkins under the name 'hitc-docker-registry'
             docker.withRegistry("https://${docker_registry}", 'hitc-docker-registry') {
-                docker.image('ubuntu-1604-packaging').inside("-v ${workspace}:/package/source -v ${workspace}/${buildDir}:/package/build") {
+                docker.image('ubuntu-1604-packaging').inside("-v ${workspace}/dispatcher:/package/source -v ${workspace}/${buildDir}:/package/build") {
                     sh 'package'
                 }
             }
