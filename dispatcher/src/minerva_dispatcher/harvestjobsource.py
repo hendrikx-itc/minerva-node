@@ -3,7 +3,7 @@
 import os
 
 from minerva.system.jobsource import JobSource
-from minerva.system.job import JobDescriptor
+from minerva.system.job import Job
 
 JOB_TYPE = "harvest"
 
@@ -15,7 +15,7 @@ class HarvestJobSource(JobSource):
         return description
 
     def create_job(self, file_path):
-        return JobDescriptor(
+        return Job(
             job_type=JOB_TYPE,
             description=self.job_description(file_path),
             size=get_file_size(file_path),

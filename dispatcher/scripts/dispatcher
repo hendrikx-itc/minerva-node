@@ -26,9 +26,9 @@ from operator import not_
 import psycopg2.extensions
 
 from minerva.util import compose, no_op, after, retry_while
-from minerva.instance import connect
 from minerva.system.job import Job
 
+from minerva.db import connect
 from minerva_dispatcher.version import __version__ as version
 from minerva_dispatcher import JobCollector, get_job_sources
 
