@@ -37,3 +37,10 @@ def load_config(defaults, path):
     config.merge(custom_config)
 
     return config
+
+consumer_settings = {
+    "url": "amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600",
+    "queue": "harvest",
+    "routing_key": "minerva",
+    "logger": None
+}

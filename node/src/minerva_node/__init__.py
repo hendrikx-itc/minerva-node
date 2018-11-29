@@ -1,19 +1,17 @@
-# -*- coding: utf-8 -*-
 import logging
 
-from minerva.system.job import fail_job, finish_job
-
 from minerva_node.pluginapi import NodePlugin
+from minerva.system.jobqueue import fail_job, finish_job
 
 
 class Job():
     """
     The Node job base class.
     """
-    def __init__(self, id_, type_, description):
-        self.id = id_
+    def __init__(self, type_, id_, description):
         self.type = type_
         self.description = description
+        self.id = id
 
     def execute(self):
         """

@@ -3,3 +3,6 @@
 
 class ConfigError(Exception):
     pass
+
+class RabbitError(Exception):
+    pass

@@ -10,4 +10,4 @@ setup(name="dispatcher",
     package_data={"minerva_dispatcher": ["defaults/*"]},
     packages=["minerva_dispatcher"],
     package_dir={"": "src"},
-    scripts=["scripts/dispatcher", "scripts/enqueue-job", "scripts/sweep-jobs"])
+    scripts=["scripts/dispatcher"])

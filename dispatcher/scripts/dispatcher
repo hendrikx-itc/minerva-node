@@ -16,28 +16,9 @@ Dispatcher/harvest job sources look like this:
 import os
 import argparse
 import logging.handlers
-import signal
-from contextlib import closing
-from functools import partial
-import traceback
-import threading
-from operator import not_
 
-import psycopg2.extensions
-
-from minerva.util import compose, no_op, after, retry_while
-from minerva.system.job import Job
-
-from minerva.db import connect
 from minerva_dispatcher.version import __version__ as version
 from minerva_dispatcher import JobCollector, get_job_sources
-
-SIGNAL_MAP = {
-    signal.SIGKILL: "SIGKILL",
-    signal.SIGTERM: "SIGTERM",
-    signal.SIGINT: "SIGINT",
-    signal.SIGUSR1: "SIGUSR1"
-}
 
 package_name = "minerva_dispatcher"
 script_name = os.path.basename(__file__)
@@ -53,86 +34,21 @@ def main():
         "--version", action="version", version='%(prog)s {}'.format(version),
         help="display version information and exit")
 
-    stop_event = threading.Event()
+    job_sources = get_job_sources()
+    job_collector = JobCollector(job_sources)
+    job_collector.start()
 
-    stop = after(stop_event.set, log_signal)
+    logging.info("started with pid {0:d}".format(os.getpid()))
 
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-
-    def connect_retry():
-        while not stop_event.is_set():
-            try:
-                return connect()
-            except Exception as exc:
-                logging.error(exc)
-                stop_event.wait(1.0)
-
-    with closing(connect_retry()) as conn:
-        with closing(conn.cursor()) as cursor:
-            job_sources = get_job_sources(cursor)
-
-        conn.commit()
-
-        job_collector = JobCollector(job_sources, stop_event)
-        job_collector.start()
-
-        logging.info("started with pid {0:d}".format(os.getpid()))
-
-        for job_descriptor in job_collector.iter_jobs():
-            store_job(conn, stop_event, job_descriptor)
-
-        logging.info("loop terminated")
-
-        job_collector.stop()
-        job_collector.join()
-        logging.info("collector stopped")
-
-        conn.commit()
-
-        logging.info("stopped")
-
-
-def on_connection(conn):
-    def f(cmd):
-        with closing(conn.cursor()) as cursor:
-            cmd(cursor)
-
-    return f
-
-
-def store_job(conn, stop_event, job_descriptor):
     try:
-        resilient_db_exec(
-            action=partial(on_connection(conn), Job.create(job_descriptor)),
-            stop_event=stop_event
-        )
-    except:
-        logging.error(traceback.format_exc())
-        conn.rollback()
+        job_collector.run()
+    except Exception as e:
+        logging.warning("error in loop: {}".format(e))
     else:
-        conn.commit()
-        logging.info("enqueued {}".format(job_descriptor.description["uri"]))
-
-
-# In case of a database shutdown, we first get an InterfaceError and the
-# next time an OperationalError
-EXCEPTION_HANDLER_MAP = {
-    psycopg2.InterfaceError: no_op,
-    psycopg2.OperationalError: no_op
-}
-
-
-def resilient_db_exec(action, stop_event):
-    condition = compose(not_, stop_event.is_set)
-
-    retry_while(action, EXCEPTION_HANDLER_MAP, condition)
-
-
-def log_signal(signum, _frame):
-    logging.info("{0!s} signal received".format(
-        SIGNAL_MAP.get(signum, signum)))
-
+        logging.warning("loop ended")
+    finally:
+        job_collector.stop()
+        logging.info("collector stopped")
 
 if __name__ == "__main__":
     main()

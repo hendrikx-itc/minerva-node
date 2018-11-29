@@ -3,14 +3,15 @@
 import os
 import logging
 import re
-import queue
 
 import pyinotify
 
-from minerva.util import expand_args, iter_queue, no_op
+from minerva.util import no_op
 
 from minerva_dispatcher.harvestjobsource import HarvestJobSource, JOB_TYPE
 from minerva_dispatcher.error import ConfigError
+from minerva_dispatcher.config import job_source_data, rabbitmq_data
+from minerva_dispatcher.pika_publisher import Publisher
 
 EVENT_MASK = (
     pyinotify.IN_MOVED_TO |
@@ -31,43 +32,42 @@ class JobCollector(object):
 
     """
 
-    def __init__(self, job_sources, stop_event):
+    def __init__(self, job_sources):
         self.job_sources = job_sources
-        self.stop_event = stop_event
-        self.notifier = None
-        self.queue = queue.Queue()
-        self.notifier = setup_notifier(self.job_sources, self.queue.put)
+
+        self.publisher = Publisher(
+            rabbitmq_data['url'],
+            rabbitmq_data['queue'] or JOB_TYPE,
+            rabbitmq_data['routing_key'],
+            logging.getLogger(rabbitmq_data['logger'])
+        )
+        self.notifier = setup_notifier(self.job_sources, self.publisher.publish_message)
 
     def start(self):
         """Start the job collection."""
-        self.notifier.start()
+        self.publisher.start()
 
     def stop(self):
         """Stop the job collection."""
-        self.notifier.stop()
+        self.publisher.stop()
 
-    def join(self):
-        """Wait for termination of the notifier thread."""
-        self.notifier.join()
-
-    def iter_jobs(self):
-        """Return iterator over the job queue."""
-        return iter_queue(self.stop_event, self.queue.get_nowait, queue.Empty,
-                          TIMEOUT)
+    def run(self):
+        """Run the notifier thread indefinitely."""
+        self.notifier.loop()
 
 
-def get_job_sources(cursor):
-    """Return list of HarvestJobSource instances."""
-    query = (
-        "SELECT id, name, job_type, config "
-        "FROM system.job_source "
-        "WHERE job_type = %s")
-
-    args = (JOB_TYPE, )
-
-    cursor.execute(query, args)
-
-    return map(expand_args(HarvestJobSource), cursor.fetchall())
+def get_job_sources():
+    data = config.job_source_data
+    data = [d for d in data if d['job_type'] == JOB_TYPE]
+    return [
+        HarvestJobSource(
+            d["id"],
+            d["name"],
+            d["job_type"],
+            d["config"]
+        )
+        for d in data
+    ]
 
 
 def setup_notifier(job_sources, enqueue):
@@ -80,7 +80,7 @@ def setup_notifier(job_sources, enqueue):
         except ConfigError as exc:
             logging.error(exc)
 
-    return pyinotify.ThreadedNotifier(watch_manager)
+    return pyinotify.Notifier(watch_manager)
 
 
 def watch_source(watch_manager, enqueue, job_source):
@@ -110,7 +110,7 @@ def watch_source(watch_manager, enqueue, job_source):
             file_path = os.path.join(event.path, event.name)
 
             enqueue(
-                job_source.create_job(file_path)
+                str(open(file_path).read())
             )
 
     proc_fun = event_handler({

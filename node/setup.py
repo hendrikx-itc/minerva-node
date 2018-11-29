@@ -14,8 +14,5 @@ setup(
     package_data={"minerva_node": ["defaults/*"]},
     scripts=[
         "scripts/minerva-node",
-        "scripts/minerva-job-generator",
-        "scripts/exec-node-job",
-        "scripts/enqueue-node-job"
     ]
 )

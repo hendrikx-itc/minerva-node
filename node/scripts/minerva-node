@@ -7,23 +7,18 @@ import sys
 import argparse
 import logging
 import signal
-from functools import partial
 from time import sleep
 import threading
-import json
-import traceback
 from operator import not_
-from contextlib import closing
 
 import psycopg2
 
-from minerva.util import iter_queue, after, each, compose, retry_while
-from minerva.system import jobqueue
-from minerva.instance import connect
+from minerva.util import after, compose, retry_while
+from minerva.db import connect
 
 from minerva_node.plugins import load_plugins
-from minerva_node.error import NodeError, JobError
-from minerva_node import Job, version
+from minerva_node.node import Node, MultiNode
+from minerva_node import version
 
 
 SIGNAL_MAP = {
@@ -67,7 +62,7 @@ def main():
 
     handler_map = {
         psycopg2.OperationalError: lambda exc: logging.error(
-            "could not connect to database({}), waiting".format(exc)
+            "could not connect to database ({}), waiting".format(exc)
         )
     }
 
@@ -78,9 +73,9 @@ def main():
     )
 
     if conn:
-        node = setup_node(stop_event, conn)
+        node = setup_node(conn)
 
-        node.start()
+        node.run()
 
         logging.info("started")
 
@@ -96,112 +91,18 @@ def log_signal(signum, _frame):
     )
 
 
-def setup_node(stop_event, conn):
+def setup_node(conn):
     plugins = load_plugins()
 
+    multinode = MultiNode()
+
     for plugin in plugins:
+        node = Node(conn, plugin.name)
+        node.plugin = plugin(conn)
+        multinode.add_node(node)
         logging.info("loaded plugin '{}'".format(plugin.name))
 
-    plugin_dict = dict((p.name, p(conn)) for p in plugins)
-
-    job_producer = iter_queue(
-        stop_event, partial(get_job, conn),
-        jobqueue.NoJobAvailable, NO_JOB_TIMEOUT
-    )
-
-    jobs = map(partial(create_job, plugin_dict), job_producer)
-
-    process = partial(process_job, conn)
-
-    consume_jobs = partial(each, process)
-
-    thread_fn = partial(consume_jobs, jobs)
-
-    return threading.Thread(target=thread_fn, name="Node")
-
-
-def get_job(conn):
-    try:
-        with closing(conn.cursor()) as cursor:
-            job = jobqueue.get_job(cursor)
-    except psycopg2.InterfaceError:
-        logging.error(traceback.format_exc())
-        raise jobqueue.NoJobAvailable()
-    except Exception:
-        logging.error(traceback.format_exc())
-        safe_rollback(conn)
-        raise jobqueue.NoJobAvailable()
-    else:
-        safe_commit(conn)
-
-    if job is None:
-        raise jobqueue.NoJobAvailable()
-
-    return job
-
-
-def safe_rollback(conn):
-    try:
-        conn.rollback()
-    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
-        logging.info(str(exc))
-
-
-def safe_commit(conn):
-    try:
-        conn.commit()
-    except (psycopg2.InterfaceError, psycopg2.OperationalError) as exc:
-        logging.info(str(exc))
-
-
-def exec_commit(conn, cmd):
-    try:
-        with closing(conn.cursor()) as cursor:
-            cmd(cursor)
-        conn.commit()
-    except Exception as exc:
-        logging.error(exc)
-
-
-def process_job(conn, job):
-    try:
-        job.execute()
-    except JobError as exc:
-        safe_rollback(conn)
-        logging.error(exc)
-        message = str(exc)
-        exec_commit(conn, job.fail(message))
-    except NodeError as exc:
-        safe_rollback(conn)
-        logging.error(exc)
-        message = str(exc)
-        exec_commit(conn, job.fail(message))
-    except Exception:
-        safe_rollback(conn)
-        message = traceback.format_exc()
-        logging.error(message)
-        exec_commit(conn, job.fail(message))
-    else:
-        logging.info("finished job {} {}".format(job.id, job))
-        exec_commit(conn, job.finish)
-
-
-def create_job(plugin_dict, job):
-    job_id, job_type, job_description, job_size, config = job
-
-    try:
-        job_description = json.loads(job_description)
-    except ValueError:
-        logging.error("invalid job description for job {}".format(job_id))
-        return Job(job_type, job_id, job_description)
-
-    try:
-        plugin = plugin_dict[job_type]
-    except KeyError:
-        logging.error("no plugin found for job type '{0}'".format(job_type))
-        return Job(job_type, job_id, job_description)
-    else:
-        return plugin.create_job(job_id, job_description, config)
+    return multinode
 
 
 class ListPluginsAction(argparse.Action):
