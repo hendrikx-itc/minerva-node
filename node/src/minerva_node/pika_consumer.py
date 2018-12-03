@@ -273,8 +273,8 @@ class Consumer(Thread):
         :param str|unicode body: The message body
 
         """
-        self.on_reception(body)
         self.acknowledge_message(basic_deliver.delivery_tag)
+        self.on_reception(body)
 
     def acknowledge_message(self, delivery_tag):
         """Acknowledge the message delivery from RabbitMQ by sending a
