@@ -58,7 +58,6 @@ class JobCollector(object):
 
 def get_job_sources():
     data = config.job_source_data
-    data = [d for d in data if d['job_type'] == JOB_TYPE]
     return [
         HarvestJobSource(
             d["id"],
