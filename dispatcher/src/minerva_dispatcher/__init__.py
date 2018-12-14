@@ -57,7 +57,7 @@ class JobCollector(object):
 
 
 def get_job_sources():
-    data = config.job_source_data
+    data = job_source_data
     return [
         HarvestJobSource(
             d["id"],
@@ -109,7 +109,7 @@ def watch_source(watch_manager, enqueue, job_source):
             file_path = os.path.join(event.path, event.name)
 
             enqueue(
-                str(open(file_path).read())
+                job_source.create_job(file_path)
             )
 
     proc_fun = event_handler({
