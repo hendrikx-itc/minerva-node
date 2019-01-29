@@ -17,7 +17,10 @@ setup(
     version="4.5.38",
     author="Hendrikx ITC",
     author_email="info@hendrikx-itc.nl",
-    install_requires=["minerva>=4.5.3"],
+    install_requires=[
+        "minerva>=4.5.3",
+        "pika"
+    ],
     packages=["minerva_node"],
     package_dir={"": "src"},
     package_data={"minerva_node": ["defaults/*"]},
