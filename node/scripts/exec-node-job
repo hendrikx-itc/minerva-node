@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-c", "--configfile", dest="configfile",
-        default="/etc/minerva/node.conf", help="the path to the config file")
+        default="/etc/minerva/node-rabbitmq.conf", help="the path to the config file")
 
     parser.add_argument("--list-plugins", action=ListPluginsAction,
         nargs=0, help="list installed plugins")
@@ -67,7 +67,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        config = load_config(get_defaults("node.conf"), args.configfile)
+        config = load_config(get_defaults("node-rabbitmq.conf"), args.configfile)
     except ConfigError as exc:
         print("error loading configuration: {}".format(exc))
         return 1
@@ -186,7 +186,7 @@ def create_job(plugin_dict, job):
 
 class GenerateConfigFileAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        sys.stdout.write(get_defaults("node.conf"))
+        sys.stdout.write(get_defaults("node-rabbitmq.conf"))
 
         sys.exit(0)
 

@@ -18,9 +18,8 @@ class Job(object):
     """
     The Node job base class.
     """
-    def __init__(self, type, id, description):
+    def __init__(self, type, description):
         self.type = type
-        self.id = id
         self.description = description
 
     def execute(self):
@@ -31,7 +30,7 @@ class Job(object):
         logging.info(self)
 
     def __str__(self):
-        return "{0.type} {0.id}, '{0.description}'".format(self)
+        return "{0.type} '{0.description}'".format(self)
 
 
 class MinervaContext(object):
@@ -40,11 +39,12 @@ class MinervaContext(object):
     writable Minerva database, a connection to the readable Minerva database and
     current Minerva process Id.
     """
-    def __init__(self, writer_conn, reader_conn):
-        self.writer_conn = writer_conn
-        self.reader_conn = reader_conn
-        self.storage_providers = dict([(name, p(writer_conn, api_version=4))
-                for name, p in storage.load_plugins().iteritems()])
+    def __init__(self, conn):
+        self.conn = conn
+        self.storage_providers = {
+            name: p(conn, api_version=4)
+            for name, p in storage.load_plugins().iteritems()
+        }
 
         for name in self.storage_providers.keys():
             logging.info("loaded storage plugin '{}'".format(name))

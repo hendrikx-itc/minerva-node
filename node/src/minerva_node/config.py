@@ -1,18 +1,6 @@
 # -*- coding: utf-8 -*-
-__docformat__ = "restructuredtext en"
-
-__copyright__ = """
-Copyright (C) 2008-2012 Hendrikx-ITC B.V.
-
-Distributed under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 3, or (at your option) any later
-version.  The full license is in the file COPYING, distributed as part of
-this software.
-"""
 import os
-
-import pkg_resources
-from configobj import ConfigObj
+import json
 
 
 class ConfigError(Exception):
@@ -22,26 +10,14 @@ class ConfigError(Exception):
     pass
 
 
-def get_defaults(name):
+def load_config(path):
     """
-    Return a string representing a default/template config file named `name`.
-    """
-    return pkg_resources.resource_string("minerva_node", "defaults/{}".format(name))
-
-
-def load_config(defaults, path):
-    """
-    Load a configuration from file `path`, merge it with the default
-    configuration and return a ConfigObj instance. So if any config option is
-    missing, it is filled in with a default.
-
-    Raises a :exc:`ConfigError` when the specified file doesn't exist.
+    Load a configuration from file `path`
     """
     if not os.path.isfile(path):
         raise ConfigError("config file '{0}' doesn't exist".format(path))
 
-    config = ConfigObj(defaults)
-    custom_config = ConfigObj(path)
-    config.merge(custom_config)
+    with open(path) as config_file:
+        config = json.load(config_file)
 
     return config

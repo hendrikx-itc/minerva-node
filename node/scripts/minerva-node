@@ -3,41 +3,24 @@
 """
 Minerva Node command line script
 """
-__docformat__ = "restructuredtext en"
-
-__copyright__ = """
-Copyright (C) 2008-2013 Hendrikx-ITC B.V.
-
-Distributed under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 3, or (at your option) any later
-version.  The full license is in the file COPYING, distributed as part of
-this software.
-"""
-import os
 import sys
 import argparse
 import logging
 import signal
-from functools import partial
+import time
 from time import sleep
 import threading
-from itertools import imap
 import json
 import traceback
-from operator import not_
-from contextlib import closing
 
 import psycopg2
-
-from minerva.util import iter_queue, after, each, compose, retry_while
-from minerva.db import OperationalError
-from minerva.system import jobqueue
-from minerva.instance import MinervaInstance
+from psycopg2._psycopg import OperationalError
 
 from minerva_node.plugins import load_plugins
 from minerva_node.error import NodeError, JobError
 from minerva_node import Job, MinervaContext, log, version
-from minerva_node.config import load_config, get_defaults, ConfigError
+from minerva_node.config import load_config, ConfigError
+from minerva_node.pika_consumer import PikaConsumer
 
 
 SIGNAL_MAP = {
@@ -49,6 +32,7 @@ SIGNAL_MAP = {
 }
 
 NOJOB_TIMEOUT = 1
+DB_CONNECT_TIMEOUT = 1
 
 
 class StartupError(Exception):
@@ -59,81 +43,71 @@ def main():
     """
     Script entry point
     """
-    default_minerva_instance = os.environ.get("DEFAULT_MINERVA_INSTANCE",
-                                              "default")
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-c", "--configfile", dest="configfile",
-        default="/etc/minerva/node.conf", help="the path to the config file")
-
-    parser.add_argument(
-        "-i", "--instance", default=default_minerva_instance,
-        help="name of the target minerva instance")
-
-    parser.add_argument("-u", "--user", help="user to connect to database")
-
-    parser.add_argument(
-        "--list-plugins", action=ListPluginsAction,
-        nargs=0, help="list installed plugins")
-
-    parser.add_argument(
-        "--generate-configfile", action=GenerateConfigFileAction,
-        nargs=0, help="generate base config file")
-
-    parser.add_argument(
-        "--slot", dest="slot", default=1, type=int, help="node slot number")
+        "-c", "--config-file",
+        default="/etc/minerva/node-rabbitmq.conf",
+        help="the path to the config file"
+    )
 
     parser.add_argument(
         "-v", "--version", action="version",
-        version="%(prog)s {}".format(version.__version__))
+        version="%(prog)s {}".format(version.__version__)
+    )
 
     args = parser.parse_args()
 
-    minerva_instance = MinervaInstance.load(args.instance)
-
     try:
-        config = load_config(get_defaults("node.conf"), args.configfile)
+        config = load_config(args.config_file)
     except ConfigError as exc:
         print("error loading configuration: {}".format(exc))
         return 1
 
+    rabbitmq_config = config['rabbitmq']
+
+    consumer = PikaConsumer(
+        rabbitmq_config['url'],
+        rabbitmq_config['queue'],
+        rabbitmq_config['routing_key'],
+        logging.getLogger('pika-consumer')
+    )
+
     stop_event = threading.Event()
 
-    stop_node = after(stop_event.set, log_signal)
+    def stop_node(signum, frame):
+        log_signal(signum, frame)
+        consumer.stop()
+        stop_event.set()
 
     signal.signal(signal.SIGTERM, stop_node)
     signal.signal(signal.SIGINT, stop_node)
     signal.signal(signal.SIGHUP, stop_node)
 
-    log_filename = "node_{0:d}.log".format(args.slot)
+    log.setup_logging(config["log_level"])
 
-    log.setup_logging(
-        config["log_directory"], log_filename, config["log_rotation_size"],
-        config["log_level"])
+    def connect():
+        return psycopg2.connect('')
 
-    user = args.user or config["database"]["user"] or "minerva_admin"
+    conn = None
 
-    create_writer_connection = partial(minerva_instance.connect, user=user)
-    create_reader_connection = partial(minerva_instance.connect_ro, user=user)
+    while not stop_event.is_set():
+        try:
+            conn = connect()
+        except OperationalError as e:
+            logging.error(
+                "could not connect to database, waiting {} seconds".format(
+                    DB_CONNECT_TIMEOUT
+                )
+            )
+            time.sleep(DB_CONNECT_TIMEOUT)
+        else:
+            break
 
-    handler_map = {
-        OperationalError: partial(logging.error,
-                                  "could not connect to database, waiting")
-    }
+    if conn:
+        minerva_context = MinervaContext(conn)
 
-    retry_condition = compose(not_, stop_event.is_set)
-
-    writer_conn = retry_while(create_writer_connection, handler_map,
-                              retry_condition)
-    reader_conn = retry_while(create_reader_connection, handler_map,
-                              retry_condition)
-
-    if writer_conn and reader_conn:
-        minerva_context = MinervaContext(writer_conn, reader_conn)
-
-        node = setup_node(stop_event, minerva_context)
+        node = setup_node(stop_event, minerva_context, consumer)
 
         node.start()
 
@@ -150,88 +124,28 @@ def log_signal(signum, _frame):
         SIGNAL_MAP.get(signum, signum)))
 
 
-def setup_node(stop_event, minerva_context):
+def setup_node(stop_event, minerva_context, queue_conn):
     plugins = load_plugins()
 
     for plugin in plugins:
         logging.info("loaded plugin '{}'".format(plugin.name))
 
-    plugin_dict = dict((p.name, p(minerva_context)) for p in plugins)
+    plugin_dict = {
+        p.name: p(minerva_context)
+        for p in plugins
+    }
 
-    job_producer = iter_queue(
-        stop_event, partial(get_job, minerva_context.writer_conn),
-        jobqueue.NoJobAvailable, NOJOB_TIMEOUT)
+    def on_message(job_message):
+        try:
+            job = json.loads(job_message)
+        except ValueError:
+            logging.error("invalid job description: {}".format(job_message))
+        else:
+            process_job(minerva_context.conn, create_job(plugin_dict, job))
 
-    jobs = imap(partial(create_job, plugin_dict), job_producer)
+    queue_conn.handle_message = on_message
 
-    process = partial(process_job, minerva_context.writer_conn)
-
-    consume_jobs = partial(each, process)
-
-    thread_fn = partial(consume_jobs, jobs)
-
-    return threading.Thread(target=thread_fn, name="Node")
-
-
-def get_job(conn):
-    try:
-        with closing(conn.cursor()) as cursor:
-            job = jobqueue.get_job(cursor)
-    except psycopg2.InterfaceError:
-        logging.error(traceback.format_exc())
-        raise
-    except Exception:
-        logging.error(traceback.format_exc())
-        safe_rollback(conn)
-        raise jobqueue.NoJobAvailable()
-    else:
-        safe_commit(conn)
-
-    if job is None:
-        raise jobqueue.NoJobAvailable()
-
-    return job
-
-
-def safe_rollback(conn):
-    try:
-        conn.rollback()
-    except psycopg2.OperationalError as exc:
-        logging.info(str(exc))
-
-
-def safe_commit(conn):
-    try:
-        conn.commit()
-    except psycopg2.OperationalError as exc:
-        logging.info(str(exc))
-
-
-def finish_job(conn, job_id):
-    try:
-        jobqueue.finish_job(conn, job_id)
-        conn.commit()
-    except Exception as exc:
-        logging.error(exc)
-        return False
-    else:
-        return True
-
-
-def fail_job(conn, job_id, message):
-    try:
-        jobqueue.fail_job(conn, job_id, message)
-        conn.commit()
-    except Exception as exc:
-        logging.error(exc)
-        return False
-    else:
-        return True
-
-
-#def do_while(condition=k(True), fn):
-#	while condition():
-#		fn()
+    return threading.Thread(target=queue_conn.run, name="Node")
 
 
 def process_job(conn, job):
@@ -239,60 +153,36 @@ def process_job(conn, job):
         job.execute()
     except JobError as exc:
         safe_rollback(conn)
-        logging.error(exc)
-        message = str(exc)
-        fail_job(conn, job.id, message)
+        logging.error(str(exc))
     except NodeError as exc:
         safe_rollback(conn)
-        logging.error(exc)
-        message = str(exc)
-        fail_job(conn, job.id, message)
+        logging.error(str(exc))
     except Exception as exc:
         safe_rollback(conn)
         message = traceback.format_exc()
         logging.error(message)
-        fail_job(conn, job.id, message)
     else:
-        logging.info("finished job {} {}".format(job.id, job))
-        finish_job(conn, job.id)
+        logging.info("finished job {}".format(job))
+
+
+def safe_rollback(conn):
+    conn.rollback()
+
+
+def safe_commit(conn):
+    conn.commit()
 
 
 def create_job(plugin_dict, job):
-    job_id, job_type, job_description, job_size, config = job
-
-    try:
-        job_description = json.loads(job_description)
-    except ValueError:
-        logging.error("invalid job description for job {}".format(job_id))
-        return Job(job_type, job_id, job_description)
+    job_type = job['job_type']
+    job_description = job['description']
 
     try:
         plugin = plugin_dict[job_type]
     except KeyError:
         logging.error("no plugin found for job type '{0}'".format(job_type))
-        return Job(job_type, job_id, job_description)
     else:
-        return plugin.create_job(job_id, job_description, config)
-
-
-class GenerateConfigFileAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        sys.stdout.write(get_defaults("node.conf"))
-
-        sys.exit(0)
-
-
-class ListPluginsAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        plugins = load_plugins()
-
-        if len(plugins) == 0:
-            print("no plugins installed")
-        else:
-            for plugin in plugins:
-                print("-- {} - {}".format(plugin.name, plugin.description))
-
-        sys.exit(0)
+        return plugin.create_job(job_description)
 
 
 if __name__ == "__main__":

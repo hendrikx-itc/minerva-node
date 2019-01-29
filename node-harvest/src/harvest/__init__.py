@@ -43,9 +43,9 @@ class HarvestPlugin(object):
     def __init__(self, minerva_context):
         self.minerva_context = minerva_context
         self.plugins = load_plugins()
-        self.existence = Existence(minerva_context.writer_conn)
+        self.existence = Existence(minerva_context.conn)
 
-    def create_job(self, id, description, config):
+    def create_job(self, description):
         """
         A job description is a dictionary in the following form:
 
@@ -60,25 +60,26 @@ class HarvestPlugin(object):
                 "datasource": "pm-system-1"
             }
         """
-        return HarvestJob(self.plugins, self.existence, self.minerva_context, id, description)
+        return HarvestJob(
+            self.plugins, self.existence, self.minerva_context, description
+        )
 
 
 class HarvestJob(object):
-    def __init__(self, plugins, existence, minerva_context, id, description):
+    def __init__(self, plugins, existence, minerva_context, description):
         self.plugins = plugins
         self.existence = existence
         self.minerva_context = minerva_context
-        self.id = id
         self.description = description
 
     def __str__(self):
         return "'{}'".format(self.description["uri"])
 
     def execute(self):
-        datasource_name = self.description["datasource"]
+        datasource_name = self.description["data_source"]
 
         try:
-            datasource = get_datasource(self.minerva_context.writer_conn, datasource_name)
+            datasource = get_datasource(self.minerva_context.conn, datasource_name)
         except NoSuchDataSourceError:
             raise HarvestError("no datasource with name '{}'".format(datasource_name))
 
@@ -87,7 +88,7 @@ class HarvestJob(object):
 
         update_existence = parser_config.get("update_existence", None)
 
-        datatype = self.description["datatype"]
+        datatype = self.description["data_type"]
 
         try:
             plugin = self.plugins[datatype]
