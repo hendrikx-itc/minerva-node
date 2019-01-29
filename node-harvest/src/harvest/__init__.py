@@ -86,8 +86,6 @@ class HarvestJob(object):
         parser_config = self.description.get("parser_config", {})
         uri = self.description["uri"]
 
-        update_existence = parser_config.get("update_existence", None)
-
         datatype = self.description["data_type"]
 
         try:
@@ -104,16 +102,13 @@ class HarvestJob(object):
 
         dispatch_raw_datapackage = partial(storage_provider.store_raw, datasource)
 
-        if update_existence:
-            dispatch_raw_datapackage = partial(dispatch_raw_and_mark_existing,
-                    dispatch_raw_datapackage, update_existence,
-                    self.existence.mark_existing)
-
         dispatch_raw = compose(dispatch_raw_datapackage, storage_provider.RawDataPackage)
 
         parser = plugin.create_parser(dispatch_raw, parser_config)
 
         encoding = self.description.get("encoding", "utf-8")
+
+        logging.debug("encoding: {}".format(encoding))
 
         datastream = open_uri(uri, encoding)
 
@@ -133,9 +128,6 @@ class HarvestJob(object):
             raise JobError(stacktrace)
         else:
             execute_action(uri, self.description.get("on_success", DEFAULT_ACTION))
-
-        if update_existence:
-            self.existence.flush(datetime.now())
 
 
 def execute_action(uri, action):
@@ -173,21 +165,6 @@ done_actions = {
 }
 
 
-def dispatch_raw_and_mark_existing(store_raw, filter_types, mark_existing, raw_datapackage):
-    """
-    :param store_raw: a storage plugin 'store_raw' function
-    :param filter_types: a list of entitytype names that will be filtered for
-    existence marking
-    :param mark_existing: a function that takes arguments (dns, timestamp)
-    """
-    dns = [dn for dn, _timestamp, _values in raw_datapackage.rows if entitytype_from_dn(dn) in
-            filter_types]
-
-    mark_existing(dns)
-
-    store_raw(raw_datapackage)
-
-
 def entitytype_from_dn(dn):
     """
     Return the entitytype name from a Distinguished Name
@@ -207,6 +184,7 @@ def open_uri(uri, encoding):
         if encoding == "binary":
             open_action = partial(open, uri, "rb")
         else:
+            logging.debug("opening text file using encoding {}".format(encoding))
             open_action = partial(codecs.open, uri, encoding=encoding)
 
     try:
