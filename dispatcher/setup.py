@@ -9,7 +9,8 @@ setup(
         "configobj",
         "minerva>=5.0.0",
         "pyinotify",
-        "pyyaml"
+        "pyyaml",
+        "pika"
     ],
     test_suite="nose.collector",
     package_data={"minerva_dispatcher": ["defaults/*"]},
