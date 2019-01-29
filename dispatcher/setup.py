@@ -13,7 +13,7 @@ this software.
 from setuptools import setup
 
 setup(name="dispatcher",
-    version="4.5.29",
+    version="4.5.38",
     install_requires=["configobj",
         "minerva>=4.5.3", "pyinotify"],
     test_suite="nose.collector",
