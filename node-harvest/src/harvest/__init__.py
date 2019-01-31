@@ -22,7 +22,6 @@ import psycopg2
 from minerva.util import compose
 from minerva.directory.helpers import get_datasource, NoSuchDataSourceError
 from minerva.directory.distinguishedname import explode
-from minerva.directory.existence import Existence
 
 from minerva_node.error import JobError
 
@@ -43,7 +42,6 @@ class HarvestPlugin(object):
     def __init__(self, minerva_context):
         self.minerva_context = minerva_context
         self.plugins = load_plugins()
-        self.existence = Existence(minerva_context.conn)
 
     def create_job(self, description):
         """
@@ -61,14 +59,13 @@ class HarvestPlugin(object):
             }
         """
         return HarvestJob(
-            self.plugins, self.existence, self.minerva_context, description
+            self.plugins, self.minerva_context, description
         )
 
 
 class HarvestJob(object):
-    def __init__(self, plugins, existence, minerva_context, description):
+    def __init__(self, plugins, minerva_context, description):
         self.plugins = plugins
-        self.existence = existence
         self.minerva_context = minerva_context
         self.description = description
 
@@ -82,6 +79,9 @@ class HarvestJob(object):
             datasource = get_datasource(self.minerva_context.conn, datasource_name)
         except NoSuchDataSourceError:
             raise HarvestError("no datasource with name '{}'".format(datasource_name))
+        else:
+            # Make sure transaction intiated by datasource retrieval is closed
+            self.minerva_context.conn.commit()
 
         parser_config = self.description.get("parser_config", {})
         uri = self.description["uri"]

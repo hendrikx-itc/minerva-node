@@ -149,28 +149,23 @@ def setup_node(stop_event, minerva_context, queue_conn):
 
 
 def process_job(conn, job):
+    conn.commit()
+
     try:
         job.execute()
     except JobError as exc:
-        safe_rollback(conn)
+        conn.rollback()
         logging.error(str(exc))
     except NodeError as exc:
-        safe_rollback(conn)
+        conn.rollback()
         logging.error(str(exc))
     except Exception as exc:
-        safe_rollback(conn)
+        conn.rollback()
         message = traceback.format_exc()
         logging.error(message)
     else:
+        conn.commit()
         logging.info("finished job {}".format(job))
-
-
-def safe_rollback(conn):
-    conn.rollback()
-
-
-def safe_commit(conn):
-    conn.commit()
 
 
 def create_job(plugin_dict, job):
