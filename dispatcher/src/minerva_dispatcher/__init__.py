@@ -10,7 +10,6 @@ from minerva.util import no_op
 
 from minerva_dispatcher.harvestjobsource import HarvestJobSource, JOB_TYPE
 from minerva_dispatcher.error import ConfigError
-from minerva_dispatcher.config import job_source_data, rabbitmq_data
 from minerva_dispatcher.pika_publisher import Publisher
 
 EVENT_MASK = (
@@ -22,26 +21,25 @@ EVENT_MASK = (
 TIMEOUT = 1.0
 
 
-class JobCollector(object):
-
+class JobCollector:
     """
     Collects jobs for specified job_sources.
 
     Each harvest jobsource points to a directory and the JobCollector monitors
     the filesystem for new files using inotify.
-
     """
-
-    def __init__(self, job_sources):
+    def __init__(self, job_sources, rabbitmq_config):
         self.job_sources = job_sources
 
         self.publisher = Publisher(
-            rabbitmq_data['url'],
-            rabbitmq_data['queue'] or JOB_TYPE,
-            rabbitmq_data['routing_key'],
-            logging.getLogger(rabbitmq_data['logger'])
+            rabbitmq_config['url'],
+            rabbitmq_config['queue'],
+            rabbitmq_config['routing_key'],
+            logging.getLogger(rabbitmq_config['logger'])
         )
-        self.notifier = setup_notifier(self.job_sources, self.publisher.publish_message)
+        self.notifier = setup_notifier(
+            self.job_sources, self.publisher.publish_message
+        )
 
     def start(self):
         """Start the job collection."""
@@ -56,16 +54,14 @@ class JobCollector(object):
         self.notifier.loop()
 
 
-def get_job_sources():
-    data = job_source_data
+def get_job_sources(config):
     return [
         HarvestJobSource(
-            d["id"],
             d["name"],
             d["job_type"],
             d["config"]
         )
-        for d in data
+        for d in config['job_sources']
     ]
 
 
