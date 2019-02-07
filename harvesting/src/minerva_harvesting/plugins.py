@@ -4,7 +4,7 @@ Provides plugin loading functionality.
 """
 import pkg_resources
 
-ENTRY_POINT = "harvester.plugins"
+ENTRY_POINT = "minerva.harvest.plugins"
 
 
 def iter_entry_points():

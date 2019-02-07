@@ -17,6 +17,11 @@ from minerva_node.error import JobError
 from minerva_node import NodePlugin, Job
 from minerva_node_harvest.done_actions import execute_action
 
+def logit(text):
+    f = open('plugin.log', 'a')
+    f.write(str(text) + '\n')
+    f.close()
+
 
 DEFAULT_ACTION = ["remove"]
 
@@ -64,33 +69,40 @@ class HarvestJob(Job):
         self.existence = existence
         self.conn = conn
         self.description = description
+        if 'description' in description:
+            self.description.update(description['description'])
 
     def __str__(self):
         return "'{}'".format(self.description["uri"])
 
     def execute(self):
-        data_source_name = self.description["data_source"]
+        logit(self.description)
+        try:
+            data_source_name = self.description["data_source"]
 
-        with closing(self.conn.cursor()) as cursor:
-            data_source = DataSource.get_by_name(data_source_name)(cursor)
+            with closing(self.conn.cursor()) as cursor:
+                data_source = DataSource.get_by_name(data_source_name)(cursor)
 
-            if data_source is None:
-                raise HarvestError(
-                    "no data source with name '{}'".format(data_source_name)
-                )
+                if data_source is None:
+                    raise HarvestError(
+                        "no data source with name '{}'".format(data_source_name)
+                    )
 
-        parser_config = self.description.get("parser_config", {})
-        uri = self.description["uri"]
+            parser_config = self.description.get("parser_config", {})
+            uri = self.description["uri"]
 
-        update_existence = parser_config.get("update_existence", None)
+            update_existence = parser_config.get("update_existence", None)
 
-        data_type = self.description["data_type"]
+            data_type = self.description["data_type"]
+        except Exception as err:
+            err.args += (str(self.description),)
+            raise
 
         try:
             plugin = self.plugins[data_type]
         except KeyError:
             raise HarvestError(
-                "could not load parser plugin '{}'".format(data_type)
+                "could not load parser plugin '{}' - not in {}".format(data_type, ', '.join(self.plugins.keys()))
             )
 
         parser = plugin.create_parser(parser_config)

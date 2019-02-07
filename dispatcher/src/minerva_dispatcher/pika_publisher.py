@@ -13,6 +13,22 @@ class Devnull_logger:
         pass
 
 
+class File_logger:
+    def __init__(self, filename):
+        self._filename = filename
+
+    def info(self, text, *args):
+        f = open(self._filename, 'a')
+        f.write(text%args+"\n")
+        f.close()
+
+    def warning(self, text, *args):
+        f = open(self._filename, 'a')
+        f.write('Warning!\n')
+        f.write(text%args+'\n')
+        f.close()
+
+
 class Publisher(Thread):
     """This is a publisher that will handle unexpected
     interactions with RabbitMQ such as channel and connection closures.
@@ -30,6 +46,7 @@ class Publisher(Thread):
         to connect to RabbitMQ.
         """
         Thread.__init__(self)
+        self.logger = File_logger('/var/log/minerva/publisher.log')
 
         self._connection = None
         self._channel = None
@@ -39,7 +56,7 @@ class Publisher(Thread):
 
         self._queue = queue
         self._key = routing_key or 'key'
-        self.logger = logger or Devnull_logger()
+        self.logger.info('Initialized')
 
     def connect(self):
         """This method connects to RabbitMQ, returning the connection handle.
@@ -55,7 +72,8 @@ class Publisher(Thread):
         return pika.SelectConnection(pika.URLParameters(self._url),
                                      on_open_callback=self.on_connection_open,
                                      on_close_callback=self.on_connection_closed,
-                                     stop_ioloop_on_close=False)
+                                     stop_ioloop_on_close=False
+        )
 
     def on_connection_open(self, unused_connection):
         """This method is called by pika once the connection to RabbitMQ has
@@ -226,6 +244,8 @@ class Publisher(Thread):
         This list will be used to check for delivery confirmations in the
         on_delivery_confirmations method.
         """
+
+        self.logger.info('Message: {}'.format(message))
 
         if self._channel is None:
             raise RabbitError('No channel defined')

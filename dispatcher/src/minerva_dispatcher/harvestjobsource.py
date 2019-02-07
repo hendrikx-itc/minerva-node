@@ -1,26 +1,27 @@
 # -*- coding: utf-8 -*-
 """Provides the JobSource class."""
 import os
+import json
 
 from minerva.system.jobsource import JobSource
-from minerva.system.job import Job
-
-JOB_TYPE = "harvest"
 
 
 class HarvestJobSource(JobSource):
+    def __init__(self, id, name, job_type, config, publisher):
+        JobSource.__init__(self, id, name, job_type, config)
+        self.queue = publisher
+
     def job_description(self, dir_path):
         description = {"uri": dir_path}
         description.update(self.config["job_config"])
         return description
 
     def create_job(self, file_path):
-        return Job(
-            job_type=JOB_TYPE,
-            description=self.job_description(file_path),
-            size=get_file_size(file_path),
-            job_source_id=self.id
-        )
+        return json.dumps({
+            'job_type': self.job_type,
+            'description': self.job_description(file_path),
+            'size': get_file_size(file_path),
+        })
 
 
 def get_file_size(file_path):

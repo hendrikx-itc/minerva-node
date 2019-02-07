@@ -4,17 +4,18 @@
 job_source_data = [
     {
        "id": 1,
-       "name": "oss-rc-3g-pm",
+       "name": "aireas",
        "job_type": "harvest",
        "config": """
 {
-    "uri": "/data/Udex/oss-rc/3G/pm",
+    "uri": "/input",
     "recursive": true,
-    "match_pattern": "[^\\\\.]",
+    "match_pattern": ".*",
     "job_config": {
-        "datatype": "pm_3gpp",
-        "datasource": "oss-rc-3g-pm",
-        "on_failure": {"name": "move", "args": ["/data/fringe/oss-rc/3g/pm"]},          "parser_config": {}
+        "data_type": "aireas",
+        "data_source": "aireas",
+        "on_failure": {},
+        "parser_config": {}
     }
 }
 """
@@ -22,8 +23,8 @@ job_source_data = [
 ]
 
 rabbitmq_data = {
-    "url": "amqp://guest:guest@localhost:5672/%2F?connection_attempts=3&heartbeat_interval=3600",
-    "queue": None, # "queue=None implies queue=JOB_TYPE
+    "url": "amqp://guest:guest@rabbit:5672/%2F?connection_attempts=3&heartbeat_interval=3600",
     "routing_key": "minerva",
-    "logger": "minerva-dispatcher"
+    "logger": "minerva-dispatcher",
+    "sleeptime": 40
 }

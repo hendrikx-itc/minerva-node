@@ -16,6 +16,19 @@ class Devnull_logger:
     def warning(self, text, *args):
         pass
 
+class File_logger:
+    def __init__(self, url):
+        self._url = url
+
+    def info(self, text, *args):
+        f = open(self._url, 'a')
+        f.write('{}\n'.format(text%args))
+        f.close()
+
+    def warning(self, text, *args):
+        self.info('WARNING!!!\n{}'.format(text%args))
+        
+    
 class Consumer(Thread):
     """This is a consumer that will handle unexpected interactions
     with RabbitMQ such as channel and connection closures.
@@ -47,6 +60,8 @@ class Consumer(Thread):
         self.queue = queue
         self.key = routing_key
         self.logger = logger or Devnull_logger()
+        self.logger = File_logger('/var/log/minerva/consumer.log')
+        self.logger.info('Starting!')
         self.setup()
 
     def connect(self):
@@ -274,6 +289,7 @@ class Consumer(Thread):
 
         """
         self.acknowledge_message(basic_deliver.delivery_tag)
+        self.logger.info('Received: {}'.format(body))
         self.on_reception(body)
 
     def acknowledge_message(self, delivery_tag):
