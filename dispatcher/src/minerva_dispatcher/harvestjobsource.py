@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Provides the JobSource class."""
 import os
 import json
+
 
 from minerva.system.jobsource import JobSource
 
