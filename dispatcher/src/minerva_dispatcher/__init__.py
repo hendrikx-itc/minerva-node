@@ -8,7 +8,7 @@ import pyinotify
 
 from minerva.util import no_op
 
-from minerva_dispatcher.harvestjobsource import HarvestJobSource, JOB_TYPE
+from minerva_dispatcher.harvestjobsource import HarvestJobSource
 from minerva_dispatcher.error import ConfigError
 from minerva_dispatcher.pika_publisher import Publisher
 
@@ -30,6 +30,8 @@ class JobCollector:
     """
     def __init__(self, job_sources, rabbitmq_config):
         self.job_sources = job_sources
+
+        print(rabbitmq_config)
 
         self.publisher = Publisher(
             rabbitmq_config['url'],

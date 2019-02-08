@@ -68,6 +68,10 @@ class Publisher(Thread):
         :rtype: pika.SelectConnection
 
         """
+        print('url: {}'.format(self._url))
+        print('queue: {}'.format(self._queue))
+        print('key: {}'.format(self._key))
+
         self.logger.info('Connecting to %s', self._url)
         return pika.SelectConnection(pika.URLParameters(self._url),
                                      on_open_callback=self.on_connection_open,

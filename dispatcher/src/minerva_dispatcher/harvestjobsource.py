@@ -3,17 +3,14 @@ import os
 import json
 
 
-from minerva.system.jobsource import JobSource
+from minerva_dispatcher.jobsource import JobSource
 
 
 class HarvestJobSource(JobSource):
-    def __init__(self, id, name, job_type, config, publisher):
-        JobSource.__init__(self, id, name, job_type, config)
-        self.queue = publisher
-
-    def job_description(self, dir_path):
-        description = {"uri": dir_path}
-        description.update(self.config["job_config"])
+    def job_description(self, file_path):
+        description = {}
+        description.update(self.config)
+        description['uri'] = file_path
         return description
 
     def create_job(self, file_path):
