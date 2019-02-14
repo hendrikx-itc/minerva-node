@@ -74,11 +74,8 @@ def main():
 
     if conn:
         node = setup_node(conn)
-
         node.run()
-
         logging.info("started")
-
         while node.is_alive():
             sleep(1)
 
@@ -97,7 +94,7 @@ def setup_node(conn):
     multinode = MultiNode()
 
     for plugin in plugins:
-        node = Node(conn, plugin.name)
+        node = Node()
         node.plugin = plugin(conn)
         multinode.add_node(node)
         logging.info("loaded plugin '{}'".format(plugin.name))
