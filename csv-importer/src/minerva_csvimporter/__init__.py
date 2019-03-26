@@ -1,1 +1,0 @@
-from minerva_csvimporter.importer import import_csv

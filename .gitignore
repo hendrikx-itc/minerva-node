@@ -8,3 +8,4 @@ materialize/schema/debian/minerva-materialize-schema*
 node-dummy/debian/python-minerva-node-dummy*
 node-materialize/debian/python-minerva-node-materialize*
 transform/metrics/debian/minerva-transform-metrics*
+.idea

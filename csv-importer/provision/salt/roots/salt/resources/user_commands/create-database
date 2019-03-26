@@ -1,8 +1,0 @@
-#!/bin/bash
-set -e
-
-psql -d postgres -c "CREATE DATABASE minerva;"
-
-install-db-deps
-
-PGDATABASE=minerva run-scripts /home/vagrant/minerva/schema/scripts
