@@ -10,17 +10,11 @@ from contextlib import closing
 
 from minerva.directory import DataSource
 from minerva.directory.existence import Existence
-
-from minerva_harvesting.plugins import load_plugins
+from minerva.harvest.plugins import load_plugins
 
 from minerva_node.error import JobError
 from minerva_node import NodePlugin, Job
-from minerva_node_harvest.done_actions import execute_action
-
-def logit(text):
-    f = open('plugin.log', 'a')
-    f.write(str(text) + '\n')
-    f.close()
+from minerva_node.done_actions import execute_action
 
 
 DEFAULT_ACTION = ["remove"]
@@ -76,7 +70,6 @@ class HarvestJob(Job):
         return "'{}'".format(self.description["uri"])
 
     def execute(self):
-        logit(self.description)
         try:
             data_source_name = self.description["data_source"]
 

@@ -1,6 +1,0 @@
-*.pyc
-build
-dist
-*.egg-info
-debian/minerva-node*
-debian/files

@@ -16,7 +16,6 @@ import psycopg2
 from minerva.util import after, compose, retry_while
 from minerva.db import connect
 
-from minerva_node.plugins import load_plugins
 from minerva_node.node import Node, MultiNode
 from minerva_node import version
 
@@ -89,15 +88,10 @@ def log_signal(signum, _frame):
 
 
 def setup_node(conn):
-    plugins = load_plugins()
-
     multinode = MultiNode()
 
-    for plugin in plugins:
-        node = Node()
-        node.plugin = plugin(conn)
-        multinode.add_node(node)
-        logging.info("loaded plugin '{}'".format(plugin.name))
+    node = Node(conn)
+    multinode.add_node(node)
 
     return multinode
 
