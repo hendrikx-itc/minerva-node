@@ -16,7 +16,7 @@ import psycopg2
 from minerva.util import after, compose, retry_while
 from minerva.db import connect
 
-from minerva_node.node import Node, MultiNode
+from minerva_node.node import Node
 from minerva_node import version
 
 
@@ -40,11 +40,6 @@ def main():
     Script entry point
     """
     parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--list-plugins", action=ListPluginsAction,
-        nargs=0, help="list installed plugins"
-    )
 
     parser.add_argument(
         "-v", "--version", action="version",
@@ -72,7 +67,7 @@ def main():
     )
 
     if conn:
-        node = setup_node(conn)
+        node = Node(conn)
         node.run()
         logging.info("started")
         while node.is_alive():
@@ -85,28 +80,6 @@ def log_signal(signum, _frame):
     logging.info(
         "received {0!s} signal".format(SIGNAL_MAP.get(signum, signum))
     )
-
-
-def setup_node(conn):
-    multinode = MultiNode()
-
-    node = Node(conn)
-    multinode.add_node(node)
-
-    return multinode
-
-
-class ListPluginsAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        plugins = load_plugins(None)
-
-        if len(plugins) == 0:
-            print("no plugins installed")
-        else:
-            for plugin in plugins:
-                print("-- {} - {}".format(plugin.name, plugin.description))
-
-        sys.exit(0)
 
 
 if __name__ == "__main__":

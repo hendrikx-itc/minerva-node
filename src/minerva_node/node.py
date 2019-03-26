@@ -28,22 +28,3 @@ class Node(Consumer):
             raise
 
         return self.harvest_plugin.create_job(job_description, config)
-
-
-class MultiNode(object):
-    def __init__(self):
-        self.nodes = []
-
-    def add_node(self, node):
-        self.nodes.append(node)
-
-    def run(self):
-        for node in self.nodes:
-            node.run()
-
-    def is_alive(self):
-        for node in self.nodes:
-            if node.is_alive():
-                return True
-        else:
-            return False
