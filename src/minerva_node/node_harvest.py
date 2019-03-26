@@ -13,7 +13,6 @@ from minerva.directory.existence import Existence
 from minerva.harvest.plugins import load_plugins
 
 from minerva_node.error import JobError
-from minerva_node import NodePlugin, Job
 from minerva_node.done_actions import execute_action
 
 
@@ -24,7 +23,7 @@ class HarvestError(JobError):
     pass
 
 
-class HarvestPlugin(NodePlugin):
+class HarvestPlugin:
     name = "harvest"
     description = "a harvesting plugin"
 
@@ -33,7 +32,7 @@ class HarvestPlugin(NodePlugin):
         self.plugins = load_plugins()
         self.existence = Existence(conn)
 
-    def create_job(self, id_, description, config):
+    def create_job(self, description, config):
         """
         A job description is a dictionary in the following form:
 
@@ -51,14 +50,12 @@ class HarvestPlugin(NodePlugin):
             }
         """
         return HarvestJob(
-            id_, self.plugins, self.existence, self.conn, description
+            self.plugins, self.existence, self.conn, description
         )
 
 
-class HarvestJob(Job):
-    def __init__(self, id_, plugins, existence, conn, description):
-        super().__init__('harvest', id_, description)
-        self.id = id_
+class HarvestJob:
+    def __init__(self, plugins, existence, conn, description):
         self.plugins = plugins
         self.existence = existence
         self.conn = conn

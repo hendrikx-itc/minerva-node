@@ -17,22 +17,17 @@ class Node(Consumer):
 
     def on_reception(self, body):
         job = self.create_job(body)
-        self.process(job)
+
+        job.execute()
 
     def create_job(self, job_description):
-        job_id = 0
-
         try:
             job_description = json.loads(job_description)
-
         except ValueError:
             logging.error("invalid job description")
             raise
 
-        return self.harvest_plugin.create_job(job_id, job_description, config)
-
-    def process(self, job):
-        job.execute()
+        return self.harvest_plugin.create_job(job_description, config)
 
 
 class MultiNode(object):
