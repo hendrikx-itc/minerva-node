@@ -1,0 +1,15 @@
+version: "3"
+services:
+  minerva-node:
+    container_name: minerva-node
+    build: ./
+    hostname: minerva-node
+    environment:
+      - PGHOST=database
+      - PGUSER=postgres
+      - PGDATABASE=minerva
+
+  database:
+    container_name: minerva-database
+    image: hendrikxitc/minerva:5.0
+    hostname: database
