@@ -9,7 +9,7 @@ setup(
     version="5.0,0.dev2",
     install_requires=[
         "minerva-etl>=5.0.0.dev2",
-        "pika"
+        "pika==0.13.0"
     ],
     test_suite="nose.collector",
     packages=["minerva_node"],
