@@ -22,7 +22,7 @@ from minerva_node import version
 
 package_name = "minerva_node"
 script_name = os.path.basename(__file__)
-config_file_name = "{}.yml".format(script_name)
+config_file_name = "node.yml"
 
 SIGNAL_MAP = {
     signal.SIGHUP: "SIGHUP",
@@ -52,7 +52,7 @@ def main():
 
     parser.add_argument(
         "-c", "--config-file",
-        default=os.path.join("/etc/node/", config_file_name),
+        default=os.path.join("/etc/minerva/", config_file_name),
         help="path of configuration file"
     )
 
