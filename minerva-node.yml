@@ -1,5 +1,0 @@
-rabbitmq:
-  url: "amqp://guest:guest@rabbit:5672/%2F?connection_attempts=3&heartbeat=3600"
-  queue: aireas
-  routing_key: minerva
-  logger: minerva-node
