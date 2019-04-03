@@ -3,7 +3,7 @@ node ('git') {
         checkout scm
     }
     stage ('Build') {
-        sh 'docker build --force-rm -f "Dockerfile" -t "hendrikxitc/minerva-node:5.0.0.dev2" -t "hendrikxitc/minerva-node:develop" .'
+        sh 'docker build --force-rm --no-cache -f "Dockerfile" -t "hendrikxitc/minerva-node:5.0.0.dev2" -t "hendrikxitc/minerva-node:develop" .'
     }
     stage ('Publish') {
         withDockerRegistry([ credentialsId: "703cc1fc-2e19-4645-b4c1-457a7ddd89c6", url: "" ]) {
