@@ -4,6 +4,7 @@ import json
 
 from minerva_node.pika_consumer import Consumer
 from minerva_node.node_harvest import HarvestPlugin
+from minerva_node.error import JobError
 
 
 class Node(Consumer):
@@ -18,7 +19,10 @@ class Node(Consumer):
     def on_reception(self, body):
         job = self.create_job(body)
 
-        job.execute()
+        try:
+            job.execute()
+        except JobError as exc:
+            logging.error('Failed to complete job {}\nError message: {}'.format(body, exc.message))
 
     def create_job(self, job_description):
         try:

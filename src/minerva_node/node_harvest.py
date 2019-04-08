@@ -99,7 +99,10 @@ class HarvestJob:
 
         encoding = self.description.get("encoding", "utf-8")
 
-        data_stream = open_uri(uri, encoding)
+        try:
+            data_stream = open_uri(uri, encoding)
+        except Exception as exc:
+            raise JobError from exc
 
         logging.debug("opened uri '{}'".format(uri))
 
