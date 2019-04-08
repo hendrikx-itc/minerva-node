@@ -8,7 +8,7 @@ setup(
     author_email='info@hendrikx-itc.nl',
     version="5.0,0.dev5",
     install_requires=[
-        "minerva-etl>=5.0.0.dev2",
+        "minerva-etl>=5.0.0.dev3",
         "pika==0.13.0"
     ],
     test_suite="nose.collector",
