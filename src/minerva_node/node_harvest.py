@@ -107,7 +107,7 @@ class HarvestJob:
         logging.debug("opened uri '{}'".format(uri))
 
         try:
-            for store_cmd in map(parser.store_command(), parser.packages(data_stream, os.path.basename(uri))):
+            for store_cmd in map(parser.store_command(), parser.packages(data_stream, os.path.basename(uri)), ['harvest {}'.format(uri)]):
                 store_cmd(data_source)(
                     self.conn
                 )

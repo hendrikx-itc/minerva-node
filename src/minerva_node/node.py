@@ -22,7 +22,7 @@ class Node(Consumer):
         try:
             job.execute()
         except JobError as exc:
-            logging.error('Failed to complete job {}\nError message: {}'.format(body, repr(exc)))
+            logging.error('Failed to complete job {}\nError message: {}'.format(body, repr(exc).replace('\\n', '\n')))
 
     def create_job(self, job_description):
         try:
