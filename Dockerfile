@@ -3,7 +3,7 @@ MAINTAINER HENDRIKX-ITC
 
 #RUN pip3 install minerva-node
 # For development we get minerva-node directly from github
-RUN pip3 install git+https://github.com/hendrikx-itc/minerva-etl
+RUN pip3 install git+https://github.com/hendrikx-itc/python-minerva@develop
 RUN pip3 install git+https://github.com/hendrikx-itc/minerva-node
 
 RUN mkdir /etc/minerva -p
