@@ -2,12 +2,13 @@ Source: minerva-node
 Section: contrib/misc
 Priority: extra
 Maintainer: Alfred Blokland <alfred.blokland@hendrikx-itc.nl>
-Build-Depends: debhelper (>= 8.0.0)
+Build-Depends: debhelper (>= 11), python3, dh-python, python3-all, python3-all-dev, python3-setuptools
 Standards-Version: 3.9.3
+X-Python3-Version: >= 3.6
 Homepage: http://www.hendrikx-itc.nl
 
 Package: minerva-node
 Architecture: all
-Depends: ${misc:Depends}, python-minerva, python-configobj
+Depends: ${misc:Depends}, ${python3:Depends}, python-minerva, python-configobj
 Description: Minerva Node
  Minerva Node is the generic functionality to execute jobs in a Minerva cluster.
