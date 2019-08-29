@@ -12,18 +12,6 @@ node ('git') {
             }
 
             //---------------------------
-            // Build Ubuntu 16.04 package
-            //---------------------------
-            def buildDir1604 = 'pkg-build/1604'
-
-            // Clean the build directory before starting
-            sh "rm -rf ${buildDir1604}"
-
-            sh './package 1604'
-            publishPackages buildDir1604.toString(), 'common/stable', 'xenial'
-            archiveArtifacts(artifacts: "${buildDir1604}/*")
-
-            //---------------------------
             // Build Ubuntu 18.04 package
             //---------------------------
             def buildDir1804 = 'pkg-build/1804'
