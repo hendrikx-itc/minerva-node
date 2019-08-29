@@ -9,6 +9,6 @@ Homepage: http://www.hendrikx-itc.nl
 
 Package: minerva-node
 Architecture: all
-Depends: ${misc:Depends}, ${python3:Depends}, python-minerva, python-configobj
+Depends: ${misc:Depends}, ${python3:Depends}, python3-minerva-etl
 Description: Minerva Node
  Minerva Node is the generic functionality to execute jobs in a Minerva cluster.
