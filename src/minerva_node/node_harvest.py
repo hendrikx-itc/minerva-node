@@ -111,14 +111,14 @@ class HarvestJob:
                 store_cmd(data_source)(
                     self.conn
                 )
-        except Exception:
+        except Exception as exc:
             stack_trace = traceback.format_exc()
 
             execute_action(
                 uri, self.description.get("on_failure", DEFAULT_ACTION)
             )
 
-            raise JobError(stack_trace)
+            raise JobError from exc
         else:
             execute_action(
                 uri, self.description.get("on_success", DEFAULT_ACTION)

@@ -15,7 +15,9 @@ setup(
     packages=["minerva_node"],
     package_dir={"": "src"},
     package_data={"minerva_node": ["defaults/*"]},
-    scripts=[
-        "scripts/minerva-node",
-    ]
+    entry_points={
+        'console_scripts': [
+            'minerva-node = minerva_node.cli:main'
+        ]
+    }
 )

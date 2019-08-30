@@ -1,7 +1,5 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
 """
-Minerva Node command line script
+Minerva Node command line interface
 """
 import os, sys
 import yaml
@@ -39,6 +37,14 @@ class StartupError(Exception):
     pass
 
 
+LOG_LEVEL_MAP = {
+    'info': logging.INFO,
+    'debug': logging.DEBUG,
+    'error': logging.ERROR,
+    'warn': logging.WARN
+}
+
+
 def main():
     """
     Script entry point
@@ -56,11 +62,29 @@ def main():
         help="path of configuration file"
     )
 
+    parser.add_argument(
+        '--log-level', default='error', choices=list(LOG_LEVEL_MAP.keys()),
+        help='Set log level')
+
     args = parser.parse_args()
+
+    log_level = LOG_LEVEL_MAP.get(args.log_level.lower(), logging.DEBUG)
+
+    setup_logging(log_level)
 
     stop_event = threading.Event()
 
-    stop_node = after(stop_event.set, log_signal)
+    stop_chain = [
+        stop_event.set
+    ]
+
+    def stop_node(signum, _frame):
+        logging.info(
+            "received {0!s} signal".format(SIGNAL_MAP.get(signum, signum))
+        )
+
+        for c in stop_chain:
+            c()
 
     signal.signal(signal.SIGTERM, stop_node)
     signal.signal(signal.SIGINT, stop_node)
@@ -82,14 +106,16 @@ def main():
 
     if conn:
         node = Node(conn, config['rabbitmq'])
+
+        stop_chain.append(node.stop)
+        logging.info("Starting consumer")
+
         node.run()
-        logging.info("started")
+
         while node.is_alive() and not stop_event.is_set():
             sleep(1)
 
-        node.stop()
-
-    logging.info("stopped")
+    logging.info("Stopped")
 
 
 def load_config(file_path):
@@ -97,11 +123,11 @@ def load_config(file_path):
         return yaml.load(config_file)
 
 
-def log_signal(signum, _frame):
-    logging.info(
-        "received {0!s} signal".format(SIGNAL_MAP.get(signum, signum))
-    )
+def setup_logging(log_level):
+    log_handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(levelname)s %(message)s")
+    log_handler.setFormatter(formatter)
 
-
-if __name__ == "__main__":
-    sys.exit(main())
+    root_logger = logging.getLogger("")
+    root_logger.setLevel(log_level)
+    root_logger.addHandler(log_handler)
