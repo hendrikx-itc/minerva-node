@@ -131,3 +131,7 @@ def setup_logging(log_level):
     root_logger = logging.getLogger("")
     root_logger.setLevel(log_level)
     root_logger.addHandler(log_handler)
+
+
+if __name__ == '__main__':
+    main()

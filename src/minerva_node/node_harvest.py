@@ -92,7 +92,9 @@ class HarvestJob:
             plugin = self.plugins[data_type]
         except KeyError:
             raise HarvestError(
-                "could not load parser plugin '{}' - not in {}".format(data_type, ', '.join(self.plugins.keys()))
+                "could not load parser plugin '{}' - not in {}".format(
+                    data_type, ', '.join(self.plugins.keys())
+                )
             )
 
         parser = plugin.create_parser(parser_config)
@@ -102,23 +104,28 @@ class HarvestJob:
         try:
             data_stream = open_uri(uri, encoding)
         except Exception as exc:
-            raise JobError from exc
+            raise JobError(str(exc))
 
         logging.debug("opened uri '{}'".format(uri))
 
+        store_commands = (
+            parser.store_command()(package, 'harvest')
+            for package in parser.load_packages(
+                data_stream, os.path.basename(uri)
+            )
+        )
+
         try:
-            for store_cmd in map(parser.store_command(), parser.packages(data_stream, os.path.basename(uri)), ['harvest {}'.format(uri)]):
+            for store_cmd in store_commands:
                 store_cmd(data_source)(
                     self.conn
                 )
         except Exception as exc:
-            stack_trace = traceback.format_exc()
-
             execute_action(
                 uri, self.description.get("on_failure", DEFAULT_ACTION)
             )
 
-            raise JobError from exc
+            raise JobError(str(exc))
         else:
             execute_action(
                 uri, self.description.get("on_success", DEFAULT_ACTION)

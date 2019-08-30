@@ -339,20 +339,3 @@ class Consumer(Thread):
     def on_reception(self, body):
         # to be changed in child objects
         pass
-
-
-class ExampleConsumer(Consumer):
-    def on_reception(self, body):
-        print('Received: {}'.format(body))
-
-    
-def main():
-    example = ExampleConsumer('amqp://guest:guest@localhost:5672/%2F', 'harvest')
-    try:
-        example.run()
-    except KeyboardInterrupt:
-        example.stop()
-
-
-if __name__ == '__main__':
-    main()
