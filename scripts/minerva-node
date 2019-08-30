@@ -84,8 +84,10 @@ def main():
         node = Node(conn, config['rabbitmq'])
         node.run()
         logging.info("started")
-        while node.is_alive():
+        while node.is_alive() and not stop_event.is_set():
             sleep(1)
+
+        node.stop()
 
     logging.info("stopped")
 
