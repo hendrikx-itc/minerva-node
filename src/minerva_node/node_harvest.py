@@ -106,7 +106,7 @@ class HarvestJob:
         except Exception as exc:
             raise JobError(str(exc))
 
-        logging.debug("opened uri '{}'".format(uri))
+        logging.debug("Opened '{}'".format(uri))
 
         store_commands = (
             parser.store_command()(package, 'harvest')
@@ -133,6 +133,8 @@ class HarvestJob:
 
         if update_existence:
             self.existence.flush(datetime.now())
+
+        logging.debug("Finished processing '{}'".format(uri))
 
 
 def open_uri(uri, encoding):
