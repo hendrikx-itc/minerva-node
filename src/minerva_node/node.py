@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import json
+import sys, traceback
 
 from minerva_node.pika_consumer import Consumer
 from minerva_node.node_harvest import HarvestPlugin
@@ -21,9 +22,11 @@ class Node(Consumer):
 
         try:
             job.execute()
-        except JobError as exc:
+        except JobError:
+            err_msg = repr(traceback.format_stack())
+
             logging.error(
-                'Error executing job: {}'.format(str(exc))
+                'Error executing job: {}'.format(err_msg)
             )
 
     def create_job(self, job_description):
