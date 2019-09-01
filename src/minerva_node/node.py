@@ -29,6 +29,8 @@ class Node(Consumer):
                 'Error executing job: {}'.format(err_msg)
             )
 
+        logging.info("Finished job {}".format(job))
+
     def create_job(self, job_description):
         try:
             job_description = json.loads(job_description)
