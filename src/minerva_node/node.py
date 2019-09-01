@@ -23,7 +23,7 @@ class Node(Consumer):
         try:
             job.execute()
         except JobError:
-            err_msg = repr(traceback.format_stack())
+            err_msg = traceback.format_exc()
 
             logging.error(
                 'Error executing job: {}'.format(err_msg)
