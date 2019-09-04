@@ -12,6 +12,7 @@ from minerva.directory import DataSource
 from minerva.directory.entitytype import NoSuchEntityType
 from minerva.directory.existence import Existence
 from minerva.harvest.plugins import load_plugins
+from minerva.storage.trend.tabletrendstore import NoSuchTableTrendStore
 
 from minerva_node.error import JobError
 from minerva_node.done_actions import execute_action
@@ -121,6 +122,8 @@ class HarvestJob:
                 store_cmd(data_source)(
                     self.conn
                 )
+        except NoSuchTableTrendStore as exc:
+            logging.warning(str(exc))
         except NoSuchEntityType as exc:
             logging.warning(str(exc))
         except Exception as exc:
