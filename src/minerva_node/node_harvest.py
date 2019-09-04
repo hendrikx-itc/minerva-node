@@ -9,6 +9,7 @@ import gzip
 from contextlib import closing
 
 from minerva.directory import DataSource
+from minerva.directory.entitytype import NoSuchEntityType
 from minerva.directory.existence import Existence
 from minerva.harvest.plugins import load_plugins
 
@@ -120,6 +121,8 @@ class HarvestJob:
                 store_cmd(data_source)(
                     self.conn
                 )
+        except NoSuchEntityType as exc:
+            logging.warning(str(exc))
         except Exception as exc:
             execute_action(
                 uri, self.description.get("on_failure", DEFAULT_ACTION)
