@@ -6,10 +6,11 @@ setup(
     name="minerva-node",
     author='Hendrikx ITC',
     author_email='info@hendrikx-itc.nl',
-    version="5.0,0.dev25",
+    version="v5.0.0-dev.29",
     install_requires=[
         "minerva-etl>=5.0.0.dev3",
-        "pika==0.13.0"
+        "pika==0.13.0",
+        "PyYAML"
     ],
     test_suite="nose.collector",
     packages=["minerva_node"],

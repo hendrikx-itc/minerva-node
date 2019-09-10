@@ -1,7 +1,7 @@
 """
 Minerva Node command line interface
 """
-import os, sys
+import os
 import yaml
 import argparse
 import logging
@@ -12,7 +12,7 @@ from operator import not_
 
 import psycopg2
 
-from minerva.util import after, compose, retry_while
+from minerva.util import compose, retry_while
 from minerva.db import connect
 
 from minerva_node.node import Node
