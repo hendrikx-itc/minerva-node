@@ -81,14 +81,16 @@ class HarvestJob:
 
         try:
             for store_cmd in store_commands:
-                store_cmd(data_source)(
-                    self.conn
-                )
-        except NoSuchTableTrendStore as exc:
-            logging.warning(str(exc))
-        except NoSuchEntityType as exc:
-            logging.warning(str(exc))
+                try:
+                    store_cmd(data_source)(self.conn)
+                except NoSuchTableTrendStore as exc:
+                    logging.warning(str(exc))
+                except NoSuchEntityType as exc:
+                    logging.warning(str(exc))
+
         except Exception as exc:
+            logging.error("Failure executing job '{}': {}".format(uri, str(exc)))
+
             execute_action(
                 uri, self.description.get("on_failure", DEFAULT_ACTION)
             )
@@ -99,7 +101,7 @@ class HarvestJob:
                 uri, self.description.get("on_success", DEFAULT_ACTION)
             )
 
-        logging.debug("Finished processing '{}'".format(uri))
+            logging.debug("Finished job '{}'".format(uri))
 
 
 def open_uri(uri, encoding):
