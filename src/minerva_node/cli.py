@@ -16,7 +16,6 @@ from minerva.util import compose, retry_while
 from minerva.db import connect
 
 from minerva_node.node import Node
-from minerva_node import version
 
 package_name = "minerva_node"
 script_name = os.path.basename(__file__)
@@ -53,7 +52,7 @@ def main():
 
     parser.add_argument(
         "-v", "--version", action="version",
-        version="%(prog)s {}".format(version.__version__)
+        version="%(prog)s {}".format("5.0.0")
     )
 
     parser.add_argument(
