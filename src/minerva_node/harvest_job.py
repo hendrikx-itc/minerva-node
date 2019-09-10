@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*-
 import os
 import logging
-from datetime import datetime
 from functools import partial
 import codecs
-import traceback
 import gzip
 from contextlib import closing
 
 from minerva.directory import DataSource
 from minerva.directory.entitytype import NoSuchEntityType
-from minerva.directory.existence import Existence
-from minerva.harvest.plugins import load_plugins
 from minerva.storage.trend.tabletrendstore import NoSuchTableTrendStore
 
 from minerva_node.error import JobError
@@ -25,41 +21,9 @@ class HarvestError(JobError):
     pass
 
 
-class HarvestPlugin:
-    name = "harvest"
-    description = "a harvesting plugin"
-
-    def __init__(self, conn):
-        self.conn = conn
-        self.plugins = load_plugins()
-        self.existence = Existence(conn)
-
-    def create_job(self, description, config):
-        """
-        A job description is a dictionary in the following form:
-
-            {
-                "data_type": "pm_3gpp",
-                "on_failure": [
-                    "move_to", "/data/failed/"
-                ],
-                "on_success": [
-                    "remove"
-                ],
-                "parser_config": {},
-                "uri": "/data/new/some_file.xml",
-                "data_source": "pm-system-1"
-            }
-        """
-        return HarvestJob(
-            self.plugins, self.existence, self.conn, description
-        )
-
-
 class HarvestJob:
-    def __init__(self, plugins, existence, conn, description):
+    def __init__(self, plugins, conn, description):
         self.plugins = plugins
-        self.existence = existence
         self.conn = conn
         self.description = description
         if 'description' in description:
@@ -82,8 +46,6 @@ class HarvestJob:
 
             parser_config = self.description.get("parser_config", {})
             uri = self.description["uri"]
-
-            update_existence = parser_config.get("update_existence", None)
 
             data_type = self.description["data_type"]
         except Exception as err:
@@ -136,9 +98,6 @@ class HarvestJob:
             execute_action(
                 uri, self.description.get("on_success", DEFAULT_ACTION)
             )
-
-        if update_existence:
-            self.existence.flush(datetime.now())
 
         logging.debug("Finished processing '{}'".format(uri))
 

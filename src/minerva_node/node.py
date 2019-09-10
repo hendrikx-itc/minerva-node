@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import logging
 import json
-import sys, traceback
+import traceback
+
+from minerva.harvest.plugins import load_plugins
 
 from minerva_node.pika_consumer import Consumer
-from minerva_node.node_harvest import HarvestPlugin
-from minerva_node.error import JobError
+from minerva_node.harvest_job import HarvestJob
+from minerva_node.error import JobError, JobDescriptionError
 
 
 class Node(Consumer):
@@ -15,7 +17,7 @@ class Node(Consumer):
         )
         self.config = config
         self.conn = conn
-        self.harvest_plugin = HarvestPlugin(conn)
+        self.plugins = load_plugins()
 
     def on_reception(self, body):
         job = self.create_job(body)
@@ -32,10 +34,27 @@ class Node(Consumer):
         logging.info("Finished job {}".format(job))
 
     def create_job(self, job_description):
+        """
+        A job description is a dictionary in the following form:
+
+            {
+                "data_type": "pm_3gpp",
+                "on_failure": [
+                    "move_to", "/data/failed/"
+                ],
+                "on_success": [
+                    "remove"
+                ],
+                "parser_config": {},
+                "uri": "/data/new/some_file.xml",
+                "data_source": "pm-system-1"
+            }
+        """
         try:
             job_description = json.loads(job_description)
-        except ValueError:
-            logging.error("invalid job description")
-            raise
+        except ValueError as e:
+            raise JobDescriptionError("Invalid job description") from e
 
-        return self.harvest_plugin.create_job(job_description, self.config)
+        return HarvestJob(
+            self.plugins, self.conn, job_description
+        )
