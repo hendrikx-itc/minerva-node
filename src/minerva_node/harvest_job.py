@@ -9,6 +9,7 @@ from contextlib import closing
 from minerva.directory import DataSource
 from minerva.directory.entitytype import NoSuchEntityType
 from minerva.storage.trend.tabletrendstore import NoSuchTableTrendStore
+from minerva.storage.trend.datapackage import DataPackage
 
 from minerva_node.error import JobError
 from minerva_node.done_actions import execute_action
@@ -74,8 +75,10 @@ class HarvestJob:
 
         store_commands = (
             parser.store_command()(package, 'harvest')
-            for package in parser.load_packages(
-                data_stream, os.path.basename(uri)
+            for package in DataPackage.merge_packages(
+                parser.load_packages(
+                    data_stream, os.path.basename(uri)
+                )
             )
         )
 
