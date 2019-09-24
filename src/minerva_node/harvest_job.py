@@ -73,8 +73,14 @@ class HarvestJob:
 
         logging.debug("Opened '{}'".format(uri))
 
+        action = {
+            'type': 'harvest',
+            'plugin': data_type,
+            'uri': uri
+        }
+
         store_commands = (
-            parser.store_command()(package, 'harvest')
+            parser.store_command()(package, action)
             for package in DataPackage.merge_packages(
                 parser.load_packages(
                     data_stream, os.path.basename(uri)
