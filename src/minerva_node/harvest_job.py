@@ -93,8 +93,10 @@ class HarvestJob:
                 try:
                     store_cmd(data_source)(self.conn)
                 except NoSuchTableTrendStore as exc:
+                    self.conn.rollback()
                     logging.warning(str(exc))
                 except NoSuchEntityType as exc:
+                    self.conn.rollback()
                     logging.warning(str(exc))
 
         except Exception as exc:
