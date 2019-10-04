@@ -8,7 +8,7 @@ from contextlib import closing
 
 from minerva.directory import DataSource
 from minerva.directory.entitytype import NoSuchEntityType
-from minerva.storage.trend.tabletrendstore import NoSuchTableTrendStore
+from minerva.storage.trend.trendstore import NoSuchTrendStore
 from minerva.storage.trend.datapackage import DataPackage
 
 from minerva_node.error import JobError
@@ -92,7 +92,7 @@ class HarvestJob:
             for store_cmd in store_commands:
                 try:
                     store_cmd(data_source)(self.conn)
-                except NoSuchTableTrendStore as exc:
+                except NoSuchTrendStore as exc:
                     self.conn.rollback()
                     logging.warning(str(exc))
                 except NoSuchEntityType as exc:
