@@ -119,7 +119,7 @@ def main():
 
 def load_config(file_path):
     with open(file_path) as config_file:
-        return yaml.load(config_file)
+        return yaml.load(config_file, Loader=yaml.SafeLoader)
 
 
 def setup_logging(log_level):
