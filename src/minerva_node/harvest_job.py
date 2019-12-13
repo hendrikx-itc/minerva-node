@@ -93,11 +93,17 @@ class HarvestJob:
                 try:
                     store_cmd(data_source)(self.conn)
                 except NoSuchTrendStore as exc:
+                    # This can happen normally, when no trend store is
+                    # configured for the data in the package, but you might
+                    # want to see what data you are missing using debug
+                    # logging.
                     self.conn.rollback()
-                    logging.warning(str(exc))
+                    logging.debug(str(exc))
                 except NoSuchEntityType as exc:
+                    # For a similar reason as the above exception, no entity
+                    # type might be found.
                     self.conn.rollback()
-                    logging.warning(str(exc))
+                    logging.debug(str(exc))
 
         except Exception as exc:
             logging.error("Failure executing job '{}': {}".format(uri, str(exc)))
