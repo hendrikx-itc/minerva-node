@@ -1,5 +1,5 @@
 rabbitmq:
   url: "amqp://guest:guest@127.0.0.1:5672/%2F?connection_attempts=3&heartbeat=3600"
-  queue: minerva-node
-  routing_key: minerva
-  logger: minerva-node
+  queue: cm4g
+  routing_key: "minerva"
+  logger: "minerva-dispatcher"
