@@ -1,0 +1,17 @@
+To use the Minerva node, create a Minerva node object with the following
+arguments:
+* parser - a parser function or method as described below
+* url - the url to contact the RabibtMQ application on
+* queue - the queue on the RabbitMQ to check
+* key - the RabbitMQ key (defaults to "minerva")
+* logger - not used(?)
+* log_level - the minimum level to log at (defaults to "WARNING")
+
+After that, execute start_node() on the node.
+
+The parser should be a function that has 4 arguments:
+* conn - a connection to the Minerva database
+* uri - the uri (file path) for a file
+* attribute_stores - a dictionary { name: attribute_store } where
+  attribute_store is an AttributeStore instance
+* data_source - a data source name
