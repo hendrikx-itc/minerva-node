@@ -261,7 +261,7 @@ class Consumer(Thread):
 
         """
         self.acknowledge_message(basic_deliver.delivery_tag)
-        logging.info('Received: {}'.format(body))
+        logging.debug('Received: {}'.format(body))
         self.on_reception(body)
 
     def acknowledge_message(self, delivery_tag):

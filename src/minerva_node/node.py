@@ -2,6 +2,9 @@
 import logging
 import json
 import traceback
+from time import sleep
+
+import psycopg2
 
 from minerva.harvest.plugins import load_plugins
 
@@ -10,26 +13,58 @@ from minerva_node.harvest_job import HarvestJob
 from minerva_node.error import JobError, JobDescriptionError
 
 
+MAX_TIMEOUT = 60    # Maximum timeout between retries
+TIMEOUT_STEP = 1.0  # Step size in seconds for the timeout between retries
+
+
 class Node(Consumer):
-    def __init__(self, conn, config):
+    config: dict
+
+    def __init__(self, connect_fn, stop_event, config: dict):
         Consumer.__init__(
             self, config['url'], config['queue'], config['logger']
         )
         self.config = config
-        self.conn = conn
+        self.connect_fn = connect_fn
+        self.stop_event = stop_event
         self.plugins = load_plugins()
 
     def on_reception(self, body):
         job = self.create_job(body)
 
-        try:
-            job.execute()
-        except JobError:
-            err_msg = traceback.format_exc()
+        retry = True
+        attempt = 1
 
-            logging.error(
-                'Error executing job: {}'.format(err_msg)
-            )
+        while retry and not self.stop_event.is_set():
+            try:
+                conn = self.connect_fn()
+
+                job.execute(conn)
+            except psycopg2.OperationalError as e:
+                logging.error(
+                    'Error executing job: {}'.format(e)
+                )
+
+                # Database not ready yet, so retry
+                retry = True
+
+                timeout = min(attempt * TIMEOUT_STEP, MAX_TIMEOUT)
+
+                sleep(timeout)
+            except JobError:
+                err_msg = traceback.format_exc()
+
+                logging.error(
+                    'Error executing job: {}'.format(err_msg)
+                )
+
+                # We don't know if it was a recoverable error so don't retry
+                retry = False
+            else:
+                # Success, so no retry is needed
+                retry = False
+
+            attempt += 1
 
         logging.info("Finished job {}".format(job))
 
@@ -56,5 +91,5 @@ class Node(Consumer):
             raise JobDescriptionError("Invalid job description") from e
 
         return HarvestJob(
-            self.plugins, self.conn, job_description
+            self.plugins, job_description
         )

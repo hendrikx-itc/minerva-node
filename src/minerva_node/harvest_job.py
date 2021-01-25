@@ -23,9 +23,8 @@ class HarvestError(JobError):
 
 
 class HarvestJob:
-    def __init__(self, plugins, conn, description):
+    def __init__(self, plugins, description):
         self.plugins = plugins
-        self.conn = conn
         self.description = description
         if 'description' in description:
             self.description.update(description['description'])
@@ -33,11 +32,11 @@ class HarvestJob:
     def __str__(self):
         return "'{}'".format(self.description["uri"])
 
-    def execute(self):
+    def execute(self, conn):
         try:
             data_source_name = self.description["data_source"]
 
-            with closing(self.conn.cursor()) as cursor:
+            with closing(conn.cursor()) as cursor:
                 data_source = DataSource.get_by_name(data_source_name)(cursor)
 
                 if data_source is None:
@@ -91,18 +90,18 @@ class HarvestJob:
         try:
             for store_cmd in store_commands:
                 try:
-                    store_cmd(data_source)(self.conn)
+                    store_cmd(data_source)(conn)
                 except NoSuchTrendStore as exc:
                     # This can happen normally, when no trend store is
                     # configured for the data in the package, but you might
                     # want to see what data you are missing using debug
                     # logging.
-                    self.conn.rollback()
+                    conn.rollback()
                     logging.debug(str(exc))
                 except NoSuchEntityType as exc:
                     # For a similar reason as the above exception, no entity
                     # type might be found.
-                    self.conn.rollback()
+                    conn.rollback()
                     logging.debug(str(exc))
 
         except Exception as exc:

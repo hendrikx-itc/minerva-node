@@ -8,11 +8,7 @@ import logging
 import signal
 from time import sleep
 import threading
-from operator import not_
 
-import psycopg2
-
-from minerva.util import compose, retry_while
 from minerva.db import connect
 
 from minerva_node.node import Node
@@ -89,30 +85,17 @@ def main():
     signal.signal(signal.SIGINT, stop_node)
     signal.signal(signal.SIGHUP, stop_node)
 
-    handler_map = {
-        psycopg2.OperationalError: lambda exc: logging.error(
-            "could not connect to database ({}), waiting".format(exc)
-        )
-    }
-
-    retry_condition = compose(not_, stop_event.is_set)
-
     config = load_config(args.config_file)
 
-    conn = retry_while(
-        connect, handler_map, retry_condition
-    )
+    node = Node(connect, stop_event, config['rabbitmq'])
 
-    if conn:
-        node = Node(conn, config['rabbitmq'])
+    stop_chain.append(node.stop)
+    logging.info("Starting consumer")
 
-        stop_chain.append(node.stop)
-        logging.info("Starting consumer")
+    node.run()
 
-        node.run()
-
-        while node.is_alive() and not stop_event.is_set():
-            sleep(1)
+    while node.is_alive() and not stop_event.is_set():
+        sleep(1)
 
     logging.info("Stopped")
 
