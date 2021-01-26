@@ -9,7 +9,7 @@ import signal
 from time import sleep
 import threading
 
-from minerva.db import connect
+import psycopg2
 
 from minerva_node.node import Node
 
@@ -98,6 +98,10 @@ def main():
         sleep(1)
 
     logging.info("Stopped")
+
+
+def connect():
+    return psycopg2.connect('')
 
 
 def load_config(file_path):
