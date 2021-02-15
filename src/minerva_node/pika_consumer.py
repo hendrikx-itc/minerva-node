@@ -124,7 +124,7 @@ class Consumer(Thread):
         logging.info('Channel opened')
         self._channel = channel
         self.add_on_channel_close_callback()
-        self.setup_exchange(self.EXCHANGE)
+        self.start_consuming()
 
     def add_on_channel_close_callback(self):
         """This method tells pika to call the on_channel_closed method if
@@ -171,7 +171,6 @@ class Consumer(Thread):
 
         """
         logging.info('Exchange declared')
-        self.setup_queue(self.queue)
 
     def setup_queue(self, queue_name):
         """Setup the queue on RabbitMQ by invoking the Queue.Declare RPC
@@ -208,7 +207,6 @@ class Consumer(Thread):
 
         """
         logging.info('Queue bound')
-        self.start_consuming()
 
     def start_consuming(self):
         """This method sets up the consumer by first calling
