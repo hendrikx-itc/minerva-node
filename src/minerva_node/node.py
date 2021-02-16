@@ -22,7 +22,7 @@ class Node(Consumer):
 
     def __init__(self, connect_fn, stop_event, config: dict):
         Consumer.__init__(
-            self, config['url'], config['queue'], config['logger']
+            self, config['url'], config['queue']
         )
         self.config = config
         self.connect_fn = connect_fn

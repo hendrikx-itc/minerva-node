@@ -19,7 +19,7 @@ class Consumer(Thread):
     EXCHANGE = 'message'
     EXCHANGE_TYPE = 'topic'
 
-    def __init__(self, amqp_url, queue, routing_key='key', logger=None):
+    def __init__(self, amqp_url, queue):
         """Create a new instance of the consumer class, passing in the AMQP
         URL used to connect to RabbitMQ.
         """
@@ -32,7 +32,6 @@ class Consumer(Thread):
 
         self.url = amqp_url
         self.queue = queue
-        self.key = routing_key
         logging.info('Starting!')
         self.setup()
 
@@ -193,10 +192,7 @@ class Consumer(Thread):
         :param pika.frame.Method method_frame: The Queue.DeclareOk frame
 
         """
-        logging.info('Binding %s to %s with %s',
-                         self.EXCHANGE, self.queue, self.key)
-        self._channel.queue_bind(self.on_bindok, self.queue,
-                                 self.EXCHANGE, self.key)
+        pass
 
     def on_bindok(self, unused_frame):
         """Invoked by pika when the Queue.Bind method has completed. At this
