@@ -78,16 +78,17 @@ class HarvestJob:
             'uri': uri
         }
 
-        store_commands = (
-            parser.store_command()(package, action)
-            for package in DataPackage.merge_packages(
-                parser.load_packages(
-                    data_stream, os.path.basename(uri)
-                )
-            )
-        )
 
         try:
+            store_commands = (
+                parser.store_command()(package, action)
+                for package in DataPackage.merge_packages(
+                    parser.load_packages(
+                        data_stream, os.path.basename(uri)
+                    )
+                )
+            )
+
             for store_cmd in store_commands:
                 try:
                     store_cmd(data_source)(conn)

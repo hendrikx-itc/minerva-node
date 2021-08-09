@@ -51,11 +51,9 @@ class Node(Consumer):
                 timeout = min(attempt * TIMEOUT_STEP, MAX_TIMEOUT)
 
                 sleep(timeout)
-            except JobError:
-                err_msg = traceback.format_exc()
-
+            except JobError as exc:
                 logging.error(
-                    'Error executing job: {}'.format(err_msg)
+                    'Error executing job: {}'.format(exc)
                 )
 
                 # We don't know if it was a recoverable error so don't retry
