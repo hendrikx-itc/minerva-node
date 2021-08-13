@@ -9,7 +9,7 @@ setup(
     version="v5.2.0",
     install_requires=[
         "minerva-etl>=5.1.0",
-        "pika==0.13.0",
+        "pika==1.2.0",
         "PyYAML"
     ],
     test_suite="nose.collector",
