@@ -94,7 +94,7 @@ def main():
 
     node.run()
 
-    while node.is_alive() and not stop_event.is_set():
+    while not stop_event.is_set():
         sleep(1)
 
     logging.info("Stopped")

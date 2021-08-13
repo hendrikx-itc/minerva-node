@@ -11,5 +11,5 @@ services:
 
   database:
     container_name: minerva-database
-    image: hendrikxitc/minerva:5.0
+    image: hendrikxitc/minerva:5.2
     hostname: database
