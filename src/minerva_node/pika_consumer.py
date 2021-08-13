@@ -123,6 +123,7 @@ class Consumer(Thread):
         logging.info('Channel opened')
         self._channel = channel
         self.add_on_channel_close_callback()
+        self._channel.basic_qos(callback=None, prefetch_size=1, prefetch_count=1, all_channels=true)
         self.start_consuming()
 
     def add_on_channel_close_callback(self):
@@ -217,7 +218,7 @@ class Consumer(Thread):
         logging.info('Issuing consumer related RPC commands')
         self.add_on_cancel_callback()
         self._consumer_tag = self._channel.basic_consume(self.on_message,
-                                                         self.queue, no_ack=True)
+                                                         self.queue)
 
     def add_on_cancel_callback(self):
         """Add a callback that will be invoked if RabbitMQ cancels the consumer
