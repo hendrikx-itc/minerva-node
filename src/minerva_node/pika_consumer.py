@@ -275,7 +275,7 @@ class Consumer(object):
         :param pika.Spec.BasicProperties: properties
         :param bytes body: The message body
         """
-        LOGGER.info('Received message # %s from %s: %s',
+        LOGGER.debug('Received message # %s from %s: %s',
                     basic_deliver.delivery_tag, properties.app_id, body)
         self.acknowledge_message(basic_deliver.delivery_tag)
         self.on_reception(body)
@@ -288,7 +288,7 @@ class Consumer(object):
         Basic.Ack RPC method for the delivery tag.
         :param int delivery_tag: The delivery tag from the Basic.Deliver frame
         """
-        LOGGER.info('Acknowledging message %s', delivery_tag)
+        LOGGER.debug('Acknowledging message %s', delivery_tag)
         self._channel.basic_ack(delivery_tag)
 
     def stop_consuming(self):
@@ -296,7 +296,7 @@ class Consumer(object):
         Basic.Cancel RPC command.
         """
         if self._channel:
-            LOGGER.info('Sending a Basic.Cancel RPC command to RabbitMQ')
+            LOGGER.debug('Sending a Basic.Cancel RPC command to RabbitMQ')
             cb = functools.partial(
                 self.on_cancelok, userdata=self._consumer_tag)
             self._channel.basic_cancel(self._consumer_tag, cb)
@@ -310,7 +310,7 @@ class Consumer(object):
         :param str|unicode userdata: Extra user data (consumer tag)
         """
         self._consuming = False
-        LOGGER.info(
+        LOGGER.debug(
             'RabbitMQ acknowledged the cancellation of the consumer: %s',
             userdata)
         self.close_channel()
@@ -319,7 +319,7 @@ class Consumer(object):
         """Call to close the channel with RabbitMQ cleanly by issuing the
         Channel.Close RPC command.
         """
-        LOGGER.info('Closing the channel')
+        LOGGER.debug('Closing the channel')
         self._channel.close()
 
     def run(self):
@@ -341,13 +341,13 @@ class Consumer(object):
         """
         if not self._closing:
             self._closing = True
-            LOGGER.info('Stopping')
+            LOGGER.debug('Stopping')
             if self._consuming:
                 self.stop_consuming()
                 self._connection.ioloop.start()
             else:
                 self._connection.ioloop.stop()
-            LOGGER.info('Stopped')
+            LOGGER.debug('Stopped')
 
 
 class ReconnectingConsumer(object):
@@ -374,7 +374,7 @@ class ReconnectingConsumer(object):
         if self._consumer.should_reconnect:
             self._consumer.stop()
             reconnect_delay = self._get_reconnect_delay()
-            LOGGER.info('Reconnecting after %d seconds', reconnect_delay)
+            LOGGER.debug('Reconnecting after %d seconds', reconnect_delay)
             time.sleep(reconnect_delay)
             self._consumer = Consumer(self._amqp_url, self._queue)
 
