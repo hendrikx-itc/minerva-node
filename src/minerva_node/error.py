@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""This module contains Harvester error classes."""
+"""Custom Minerva Node error classes."""
 
 
 class JobError(Exception):
