@@ -26,15 +26,16 @@ class HarvestError(JobError):
 
 class HarvestJob:
     def __init__(self, plugins, description):
-        """Create a new instance of the HarvestJob class.
+        """
+        Create a new instance of the HarvestJob class.
 
         Pass in the plugins required for the data type to process and details
-        of the job, such as data source, data type and parser configuration. 
+        of the job, such as data source, data type and parser configuration.
         """
         self.plugins = plugins
         self.description = description
-        if 'description' in description:
-            self.description.update(description['description'])
+        if "description" in description:
+            self.description.update(description["description"])
 
     def __str__(self):
         return "'{}'".format(self.description["uri"])
@@ -64,7 +65,7 @@ class HarvestJob:
         except KeyError:
             raise HarvestError(
                 "could not load parser plugin '{}' - not in {}".format(
-                    data_type, ', '.join(self.plugins.keys())
+                    data_type, ", ".join(self.plugins.keys())
                 )
             )
 
@@ -79,12 +80,7 @@ class HarvestJob:
 
         logging.debug("Opened '{}'".format(uri))
 
-        action = {
-            'type': 'harvest',
-            'plugin': data_type,
-            'uri': uri
-        }
-
+        action = {"type": "harvest", "plugin": data_type, "uri": uri}
 
         try:
             job_id = start_job(conn, action)
@@ -92,9 +88,7 @@ class HarvestJob:
             store_commands = (
                 parser.store_command()(package, job_id)
                 for package in DataPackage.merge_packages(
-                    parser.load_packages(
-                        data_stream, os.path.basename(uri)
-                    )
+                    parser.load_packages(data_stream, os.path.basename(uri))
                 )
             )
 
@@ -117,17 +111,13 @@ class HarvestJob:
         except Exception as exc:
             logging.error("Failure executing job '{}': {}".format(uri, str(exc)))
 
-            execute_action(
-                uri, self.description.get("on_failure", DEFAULT_ACTION)
-            )
+            execute_action(uri, self.description.get("on_failure", DEFAULT_ACTION))
 
             raise JobError(str(exc))
         else:
             end_job(conn, job_id)
 
-            execute_action(
-                uri, self.description.get("on_success", DEFAULT_ACTION)
-            )
+            execute_action(uri, self.description.get("on_success", DEFAULT_ACTION))
 
             logging.debug("Finished job '{}'".format(uri))
 
@@ -135,8 +125,7 @@ class HarvestJob:
 def start_job(conn, description: dict) -> int:
     with conn.cursor() as cursor:
         cursor.execute(
-            "SELECT logging.start_job(%s)",
-            (psycopg2.extras.Json(description),)
+            "SELECT logging.start_job(%s)", (psycopg2.extras.Json(description),)
         )
 
         job_id = cursor.fetchone()[0]
@@ -146,10 +135,7 @@ def start_job(conn, description: dict) -> int:
 
 def end_job(conn, job_id: int):
     with conn.cursor() as cursor:
-        cursor.execute(
-            "SELECT logging.end_job(%s)",
-            (job_id,)
-        )
+        cursor.execute("SELECT logging.end_job(%s)", (job_id,))
 
 
 def open_uri(uri, encoding):
