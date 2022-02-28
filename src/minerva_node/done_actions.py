@@ -15,7 +15,7 @@ def remove():
 
 def move_to(target):
     def f(path):
-        directory, filename = os.path.split(path)
+        _, filename = os.path.split(path)
         new = os.path.join(target, filename)
 
         try:

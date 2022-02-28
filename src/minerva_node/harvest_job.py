@@ -26,6 +26,11 @@ class HarvestError(JobError):
 
 class HarvestJob:
     def __init__(self, plugins, description):
+        """Create a new instance of the HarvestJob class.
+
+        Pass in the plugins required for the data type to process and details
+        of the job, such as data source, data type and parser configuration. 
+        """
         self.plugins = plugins
         self.description = description
         if 'description' in description:
@@ -148,9 +153,7 @@ def end_job(conn, job_id: int):
 
 
 def open_uri(uri, encoding):
-    """
-    Return a file object for the specified URI.
-    """
+    """Return a file object for the specified URI."""
     if uri.endswith(".gz"):
         open_action = partial(gzip.open, uri)
     else:

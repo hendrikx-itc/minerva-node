@@ -12,14 +12,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Consumer(object):
-    """This is an example consumer that will handle unexpected interactions
-    with RabbitMQ such as channel and connection closures.
-    If RabbitMQ closes the connection, this class will stop and indicate
-    that reconnection is necessary. You should look at the output, as
-    there are limited reasons why the connection may be closed, which
-    usually are tied to permission related issues or socket timeouts.
-    If the channel is closed, it will indicate a problem with one of the
-    commands that were issued and that should surface in the output as well.
+    """
+    RabbitMQ message consumer.
+
+    This class will handle unexpected interactions with RabbitMQ such as
+    channel and connection closures.  If RabbitMQ closes the connection, this
+    class will stop and indicate that reconnection is necessary. You should
+    look at the output, as there are limited reasons why the connection may be
+    closed, which usually are tied to permission related issues or socket
+    timeouts.  If the channel is closed, it will indicate a problem with one of
+    the commands that were issued and that should surface in the output as
+    well.
     """
 
     EXCHANGE = "message"
@@ -27,7 +30,8 @@ class Consumer(object):
     ROUTING_KEY = "example.text"
 
     def __init__(self, amqp_url, queue):
-        """Create a new instance of the consumer class.
+        """
+        Create a new instance of the consumer class.
 
         Pass in the AMQP URL used to connect to RabbitMQ.
         :param str amqp_url: The AMQP url to connect with
@@ -243,9 +247,12 @@ class Consumer(object):
         )
 
     def on_basic_qos_ok(self, _unused_frame):
-        """Invoked by pika when the Basic.QoS method has completed. At this
-        point we will start consuming messages by calling start_consuming
-        which will invoke the needed RPC commands to start the process.
+        """
+        Invoked when the Basic.QoS method has completed.
+
+        At this point we will start consuming messages by calling
+        start_consuming which will invoke the needed RPC commands to start the
+        process.
         :param pika.frame.Method _unused_frame: The Basic.QosOk response frame
         """
         LOGGER.info("QOS set to: %d", self._prefetch_count)
@@ -315,16 +322,20 @@ class Consumer(object):
         pass
 
     def acknowledge_message(self, delivery_tag):
-        """Acknowledge the message delivery from RabbitMQ by sending a
-        Basic.Ack RPC method for the delivery tag.
+        """
+        Acknowledge the message delivery from RabbitMQ.
+
+        This is done by sending a Basic.Ack RPC method for the delivery tag.
         :param int delivery_tag: The delivery tag from the Basic.Deliver frame
         """
         LOGGER.debug("Acknowledging message %s", delivery_tag)
         self._channel.basic_ack(delivery_tag)
 
     def stop_consuming(self):
-        """Tell RabbitMQ that you would like to stop consuming by sending the
-        Basic.Cancel RPC command.
+        """
+        Tell RabbitMQ to stop consuming.
+
+        This is done by sending the Basic.Cancel RPC command.
         """
         if self._channel:
             LOGGER.debug("Sending a Basic.Cancel RPC command to RabbitMQ")
@@ -332,10 +343,12 @@ class Consumer(object):
             self._channel.basic_cancel(self._consumer_tag, cb)
 
     def on_cancelok(self, _unused_frame, userdata):
-        """This method is invoked by pika when RabbitMQ acknowledges the
-        cancellation of a consumer. At this point we will close the channel.
-        This will invoke the on_channel_closed method once the channel has been
-        closed, which will in-turn close the connection.
+        """
+        Invoked when RabbitMQ acknowledges the consumer cancellation.
+
+        At this point we will close the channel.  This will invoke the
+        on_channel_closed method once the channel has been closed, which will
+        in-turn close the connection.
         :param pika.frame.Method _unused_frame: The Basic.CancelOk frame
         :param str|unicode userdata: Extra user data (consumer tag)
         """
@@ -346,28 +359,36 @@ class Consumer(object):
         self.close_channel()
 
     def close_channel(self):
-        """Call to close the channel with RabbitMQ cleanly by issuing the
-        Channel.Close RPC command.
+        """
+        Cleanly close the channel with RabbitMQ.
+
+        This is done by issuing the Channel.Close RPC command.
         """
         LOGGER.debug("Closing the channel")
         self._channel.close()
 
     def run(self):
-        """Run the example consumer by connecting to RabbitMQ and then
-        starting the IOLoop to block and allow the SelectConnection to operate.
+        """
+        Run the consumer asynchronously.
+
+        This is done by connecting to RabbitMQ and then starting the IOLoop to
+        block and allow the SelectConnection to operate.
         """
         self._connection = self.connect()
         self._connection.ioloop.start()
 
     def stop(self):
-        """Cleanly shutdown the connection to RabbitMQ by stopping the consumer
-        with RabbitMQ. When RabbitMQ confirms the cancellation, on_cancelok
-        will be invoked by pika, which will then closing the channel and
-        connection. The IOLoop is started again because this method is invoked
-        when CTRL-C is pressed raising a KeyboardInterrupt exception. This
-        exception stops the IOLoop which needs to be running for pika to
-        communicate with RabbitMQ. All of the commands issued prior to starting
-        the IOLoop will be buffered but not processed.
+        """
+        Cleanly shutdown the connection to RabbitMQ.
+
+        This is done by stopping the consumer with RabbitMQ. When RabbitMQ
+        confirms the cancellation, on_cancelok will be invoked by pika, which
+        will then closing the channel and connection. The IOLoop is started
+        again because this method is invoked when CTRL-C is pressed raising a
+        KeyboardInterrupt exception. This exception stops the IOLoop which
+        needs to be running for pika to communicate with RabbitMQ. All of the
+        commands issued prior to starting the IOLoop will be buffered but not
+        processed.
         """
         if not self._closing:
             self._closing = True
@@ -381,8 +402,11 @@ class Consumer(object):
 
 
 class ReconnectingConsumer(object):
-    """This is an example consumer that will reconnect if the nested
-    ExampleConsumer indicates that a reconnect is necessary.
+    """
+    A automatically reconnecting consumer.
+
+    Reconnecting will be done when the nested Consumer indicates that a
+    reconnect is necessary.
     """
 
     def __init__(self, amqp_url, queue):

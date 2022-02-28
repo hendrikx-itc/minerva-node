@@ -20,6 +20,7 @@ class Node(Consumer):
     config: dict
 
     def __init__(self, connect_fn, stop_event, config: dict):
+        """Initialize a new instance of the Node class."""
         Consumer.__init__(self, config["url"], config["queue"])
         self.config = config
         self.connect_fn = connect_fn
@@ -61,6 +62,8 @@ class Node(Consumer):
 
     def create_job(self, job_description):
         """
+        Create a new HarvestJob from a job description.
+
         A job description is a dictionary in the following form:
 
             {
