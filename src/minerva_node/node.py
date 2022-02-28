@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
 import json
-import traceback
 from time import sleep
 
 import psycopg2
@@ -13,7 +12,7 @@ from minerva_node.harvest_job import HarvestJob
 from minerva_node.error import JobError, JobDescriptionError
 
 
-MAX_TIMEOUT = 60    # Maximum timeout between retries
+MAX_TIMEOUT = 60  # Maximum timeout between retries
 TIMEOUT_STEP = 1.0  # Step size in seconds for the timeout between retries
 
 
@@ -21,9 +20,7 @@ class Node(Consumer):
     config: dict
 
     def __init__(self, connect_fn, stop_event, config: dict):
-        Consumer.__init__(
-            self, config['url'], config['queue']
-        )
+        Consumer.__init__(self, config["url"], config["queue"])
         self.config = config
         self.connect_fn = connect_fn
         self.stop_event = stop_event
@@ -41,9 +38,7 @@ class Node(Consumer):
 
                 job.execute(conn)
             except psycopg2.OperationalError as e:
-                logging.error(
-                    'Error executing job: {}'.format(e)
-                )
+                logging.error("Error executing job: {}".format(e))
 
                 # Database not ready yet, so retry
                 retry = True
@@ -52,9 +47,7 @@ class Node(Consumer):
 
                 sleep(timeout)
             except JobError as exc:
-                logging.error(
-                    'Error executing job: {}'.format(exc)
-                )
+                logging.error("Error executing job: {}".format(exc))
 
                 # We don't know if it was a recoverable error so don't retry
                 retry = False
@@ -88,6 +81,4 @@ class Node(Consumer):
         except ValueError as e:
             raise JobDescriptionError("Invalid job description") from e
 
-        return HarvestJob(
-            self.plugins, job_description
-        )
+        return HarvestJob(self.plugins, job_description)
