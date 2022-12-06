@@ -31,10 +31,38 @@ pipeline {
                         sh "rm -rf ${buildDir1804}"
 
                         sh './package 1804'
-                        
+
                         publishPackages buildDir1804.toString(), 'common/bionic/stable', 'bionic'
 
                         archiveArtifacts(artifacts: "${buildDir1804}/*")
+
+                        //---------------------------
+                        // Build Ubuntu 20.04 package
+                        //---------------------------
+                        def buildDir2004 = 'pkg-build/2004'
+
+                        // Clean the build directory before starting
+                        sh "rm -rf ${buildDir2004}"
+
+                        sh './package 2004'
+
+                        publishPackages buildDir2004.toString(), 'common/focal/stable', 'focal'
+
+                        archiveArtifacts(artifacts: "${buildDir2004}/*")
+
+                        //---------------------------
+                        // Build Ubuntu 22.04 package
+                        //---------------------------
+                        def buildDir2204 = 'pkg-build/2204'
+
+                        // Clean the build directory before starting
+                        sh "rm -rf ${buildDir2204}"
+
+                        sh './package 2204'
+
+                        publishPackages buildDir2204.toString(), 'common/jammy/stable', 'jammy'
+
+                        archiveArtifacts(artifacts: "${buildDir2204}/*")
                     }
                 }
             }
